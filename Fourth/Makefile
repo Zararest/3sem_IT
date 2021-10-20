@@ -14,4 +14,3 @@ test: test.o
 clean:
 	rm -rf *.o main
 	rm -rf *.o test
-	rm -rf ./fifo/main_pipe ./fifo/from_read ./fifo/test_fifo
