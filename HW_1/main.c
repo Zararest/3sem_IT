@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 #define MAXLEN 100
-#define SIZE_OF_SEGMENT 1000
+#define SIZE_OF_SEGMENT 10
 
 /*
 void input_prog(char* file_name){
@@ -57,6 +57,7 @@ void put_file_to_pipe(int inp_file, int pipe_write_end){
         } else{
 
             printf("Read error\n");
+            exit(1);
         }
        
         if (size_of_cur_segment != SIZE_OF_SEGMENT){
@@ -72,37 +73,40 @@ void get_file_from_pipe(int pipe){
     char segment[SIZE_OF_SEGMENT];
 
     while ((read_ret = read(pipe, segment, SIZE_OF_SEGMENT)) != 0){
-                
+        
+        if (read_ret == -1){
+
+            printf("Problems with pipe\n");
+            exit(1);
+        }
         write(STDOUT_FILENO, segment, read_ret);
     }
 }
 
 void input_prog(int file){
 
-    int got_connection = 0, connection_pipe = open("./fifo/connection_pipe", O_RDONLY) ;
+    int got_connection = 0, connection_pipe = open("./fifo/connection_pipe", O_RDONLY | O_NONBLOCK) ;
     char byte = '1';
 
     while (connection_pipe == -1){
 
-        connection_pipe = open("./fifo/connection_pipe", O_RDONLY);
+        connection_pipe = open("./fifo/connection_pipe", O_RDONLY | O_NONBLOCK);     
     }
-
-    printf("connection have opened\n");
-
+    sleep(1);//ждем пока программа read запишет байт в fifo
+    //критическая секция ввода начало
     got_connection = read(connection_pipe, &byte, 1);
-
-    printf("read smth\n");
+    //критическая секция ввода конец
     if (got_connection != 1){
         
         if (got_connection == -1){
 
-            printf("dafuq\n");
-            exit(1);
+            printf("Can't read from connection pipe\n");
+            exit(-1);
         }
         printf("'Write' side of pipe is busy\n");
         exit(0);
     }
-
+    
     int write_pipe = open("./fifo/main_pipe", O_WRONLY);
 
     if (write_pipe == -1){
@@ -122,35 +126,37 @@ void output_prog(){
     char byte = '1';
     int connect_fifo = -2, read_pipe = -2;
 
-    if (mkfifo("./fifo/connection_pipe", S_IFIFO | 0777) == -1){ //критическая секция read
+    //критическая секция read начало
+    if (mkfifo("./fifo/connection_pipe", S_IFIFO | 0777) == -1){ 
 
         printf("'Read' side of pipe is busy\n");
         exit(0);
     }
-    
+    //критическая секция read конец
+
     if (mkfifo("./fifo/main_pipe", S_IFIFO | 0777) == -1){
 
         printf("Pipe has alredy been created\n");
         exit(0);
     }
 
-    printf("connection = %i\n", connect_fifo = open("./fifo/connection_pipe", O_WRONLY));
-
-    //раньше read был тут
+    connect_fifo = open("./fifo/connection_pipe", O_WRONLY);
 
     if (write(connect_fifo, &byte, 1) == -1){
 
         printf("Can't write to connection pipe\n");
         exit(0);
     }
-    printf("write smth\n");
+    
     close(connect_fifo);
 
-    read_pipe = open("./fifo/main_pipe", O_RDONLY); //вот тут встает 
+    read_pipe = open("./fifo/main_pipe", O_RDONLY); 
 
     get_file_from_pipe(read_pipe);
 
     close(read_pipe);
+    unlink("./fifo/connection_pipe");
+    unlink("./fifo/main_pipe");
 }
 
 int open_file(char* file){
