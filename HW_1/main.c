@@ -56,7 +56,18 @@ void input_prog(int file){
     mkfifo("./fifo/cur_connection", 0777);
 
     int connection_pipe = open("./fifo/cur_connection", O_WRONLY);
+    if (connection_pipe == -1){
+
+        printf("Other process has deleted connection fifo\n");
+        exit(0);
+    }
+
     int write_pipe = open("./fifo/cur_pipe", O_WRONLY);
+    if (write_pipe == -1){
+
+        printf("Other process has deleted main fifo\n");
+        exit(0);
+    }
 
     int delete_fifo = unlink("./fifo/cur_pipe");
     int delete_connection = unlink("./fifo/cur_connection");
@@ -86,7 +97,7 @@ void output_prog(){
     
     if (read_pipe == -1){
 
-        printf("Can't open main pipe\n");
+        printf("Can't open main pipe\n");//тут тоже падает
         exit(0);
     }
 
