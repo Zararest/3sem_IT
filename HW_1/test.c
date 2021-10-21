@@ -4,33 +4,27 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+ #include <signal.h>
 
 int main(){
 
     char str[100], outp_1[100], outp_2[100];
+
+    mkfifo("./fifo/test_fifo", 0777);
+
+    printf("test 1\n");
+    int tmp_fifo = open("./fifo/test_fifo", O_RDWR);
+
+    printf("unlink 1 = %i\n", unlink("./fifo/test_fifo"));
+    printf("unlink 2 = %i\n", unlink("./fifo/test_fifo"));
+
+    write(tmp_fifo, "11", 2);
+    printf("read: %li\n", read(tmp_fifo, str, 1));
+
+    mkfifo("./fifo/test_fifo", 0777);
+    int second_fifo = open("./fifo/test_fifo", O_RDWR);
+    printf("attempt to open %i\n", second_fifo);
     
-    /*int fir_file = open("test.txt", O_RDONLY);
-    int sec_file = open("test.txt", O_RDONLY);
-
-    read(fir_file, outp_1, 10);
-    read(sec_file, outp_2, 10);
-
-    printf("fir |%s| sec |%s|\n", outp_1, outp_2);*/
-
-    unlink("./fifo/test_fifo");
-    printf("make fifo = |%i|\n", mkfifo("./fifo/test_fifo", S_IFIFO | 0777));
-    scanf("%s", str);
-
-    //int inp_fifo = open("./fifo/test_fifo", O_RDWR);
-    int fir_read = open("./fifo/test_fifo", O_RDONLY);
-    int sec_read = open("./fifo/test_fifo", O_RDONLY);
-    printf("here\n");
-
-    //printf("write = |%li|\n", write(inp_fifo, str, 3));
-    //printf("read fir = |%li|\n", read(fir_read, outp_1, 2));
-    //printf("{%s}\n", outp_1);
-    //close(inp_fifo);
-    unlink("./fifo/test_fifo");
-    printf("read sec = |%li|\n", read(sec_read, outp_2, 2));
-    printf("{%s}\n", outp_2);
+    write(second_fifo, "22", 2);
+    printf("read 2: %li\n", read(second_fifo, str, 3));
 }

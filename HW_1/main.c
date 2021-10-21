@@ -52,82 +52,54 @@ void get_file_from_pipe(int pipe){
 
 void input_prog(int file){
 
-    int got_connection = 0, connection_pipe = open("./fifo/from_read", O_RDONLY | O_NONBLOCK) ;
-    char byte = '1';
+    mkfifo("./fifo/cur_pipe", 0777);
+    mkfifo("./fifo/cur_connection", 0777);
 
-    while (connection_pipe == -1){
+    int connection_pipe = open("./fifo/cur_connection", O_WRONLY);
+    int write_pipe = open("./fifo/cur_pipe", O_WRONLY);
 
-        connection_pipe = open("./fifo/from_read", O_RDONLY | O_NONBLOCK);     
-    }
-    sleep(1);//ждем пока программа read запишет байт в fifo
-    
-    got_connection = read(connection_pipe, &byte, 1);
-    
-    if (got_connection != 1){
-        
-        if (got_connection == -1){
+    int delete_fifo = unlink("./fifo/cur_pipe");
+    int delete_connection = unlink("./fifo/cur_connection");
 
-            printf("Can't read from connection pipe\n");
-            exit(-1);
-        }
-        printf("'Write' side of pipe is busy\n");
+    if (delete_connection != 0){
+
+        close(write_pipe);
+        printf("Other process writing to pipe\n");
         exit(0);
     }
-    //тут работает один процесс
-    int from_write = open("./fifo/from_write", O_WRONLY);
-    
-    write(from_write, &byte, 1);
-
-    int write_pipe = open("./fifo/main_pipe", O_WRONLY); //блокируется пока не откроется
-
-    if (write_pipe == -1){
-
-        printf("Processes have connected but the pipe has not been created\n");
-        exit(0);
-    }
+    //тут уже один процесс
+    write(connection_pipe, "1", 1);
     
     put_file_to_pipe(file, write_pipe);
-    close(write_pipe);
-    close(connection_pipe);
 }
 
 void output_prog(){
 
-    char byte = '1';
-    int from_read = -2, read_pipe = -2, from_write = -2, read_ret = 0;
+    char byte = '!';
+    int connect_pipe = open("./fifo/cur_connection", O_RDONLY);
 
-    mkfifo("./fifo/from_read", 0777);
-    mkfifo("./fifo/main_pipe", 0777);
-    mkfifo("./fifo/from_write", 0777);
+    while (connect_pipe == -1){
+        
+        connect_pipe = open("./fifo/cur_connection", O_RDONLY);
+    } 
+    int read_pipe = open("./fifo/cur_pipe", O_RDONLY);
+    
+    if (read_pipe == -1){
 
-    from_read = open("./fifo/from_read", O_WRONLY);
-
-    if (write(from_read, &byte, 1) == -1){
-
-        printf("Can't write to connection pipe\n");
+        printf("Can't open main pipe\n");
         exit(0);
     }
 
-    from_write = open("./fifo/from_write", O_RDONLY); 
+    int got_byte = read(connect_pipe, &byte, 1);
     
-    read_ret = read(read_pipe, &byte, 1);
-    
-    printf("after_ret\n");
-    if (read_ret != 1){
+    if (got_byte != 1){
 
-        printf("Can't connect back\n");
+        printf("Other process reading from pipe\n");
         exit(0);
     }
-
-    open("./fifo/main_pipe", O_RDONLY);
+    //тут уже один процесс
 
     get_file_from_pipe(read_pipe);
-
-    close(read_pipe);
-    close(from_write);
-    close(from_read);
-    unlink("./fifo/from_read");
-    unlink("./fifo/main_pipe");
 }
 
 int open_file(char* file){
