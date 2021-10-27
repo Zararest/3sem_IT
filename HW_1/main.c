@@ -50,7 +50,7 @@ void get_file_from_pipe(int pipe){
     }
 }
 
-void input_prog(int file){
+void input_prog(int fd){
 
     mkfifo("./fifo/cur_pipe", 0777);
     mkfifo("./fifo/cur_connection", 0777);
@@ -68,7 +68,7 @@ void input_prog(int file){
         printf("Other process has deleted main fifo\n");
         exit(0);
     }
-
+    //начало критической секции
     int delete_fifo = unlink("./fifo/cur_pipe");
     int delete_connection = unlink("./fifo/cur_connection");
 
@@ -78,10 +78,12 @@ void input_prog(int file){
         printf("Other process writing to pipe\n");
         exit(0);
     }
-    //тут уже один процесс
-    write(connection_pipe, "1", 1);
     
-    put_file_to_pipe(file, write_pipe);
+    write(connection_pipe, "1", 1);//тут уже один процесс
+    close(connection_pipe);
+    
+    //конец критической секции write
+    put_file_to_pipe(fd, write_pipe);
 }
 
 void output_prog(){
@@ -93,14 +95,14 @@ void output_prog(){
         
         connect_pipe = open("./fifo/cur_connection", O_RDONLY);
     } 
+
     int read_pipe = open("./fifo/cur_pipe", O_RDONLY);
-    
     if (read_pipe == -1){
 
-        printf("Can't open main pipe\n");//тут тоже падает
+        printf("Can't open main pipe\n");
         exit(0);
     }
-
+    //начало критической секции read
     int got_byte = read(connect_pipe, &byte, 1);
     
     if (got_byte != 1){
@@ -108,9 +110,9 @@ void output_prog(){
         printf("Other process reading from pipe\n");
         exit(0);
     }
-    //тут уже один процесс
-
-    get_file_from_pipe(read_pipe);
+    
+    //конец критической секции read
+    get_file_from_pipe(read_pipe);//тут уже один процесс
 }
 
 int open_file(char* file){
