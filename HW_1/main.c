@@ -52,6 +52,26 @@ void get_file_from_pipe(int pipe){
 
 void input_prog(int fd){
 
+    mkfifo("./fifo/cur_connection", 0777);
+
+    int connection_pipe = open("./fifo/cur_connection", O_WRONLY);
+    if (connection_pipe == -1){
+
+        printf("Other process has deleted connection fifo\n");
+        exit(0);
+    }
+
+    int delete_connection = unlink("./fifo/cur_connection");
+    if (delete_connection != 0){
+
+        printf("Other process writing to pipe\n");
+        exit(0);
+    }
+}
+
+
+void input_prog(int fd){
+
     mkfifo("./fifo/cur_pipe", 0777);
     mkfifo("./fifo/cur_connection", 0777);
 
