@@ -90,27 +90,24 @@ void create_proc(char* str){
     if (n <= 0) exit(-1); 
 
     struct Msg_buf cur_msg;
-    int msgid, parent_proc = 1, number_has_printed = 0;
+    int msgid, number_has_printed = 0;
     key_t key = ftok("./key_file.txt", 10);
     msgid = msgget(key, IPC_CREAT | 0666);
     
     for (int i = 0; i < n; i++){
+        sleep(1);
+        pid_t new_child = fork();
 
-        if (parent_proc == 1){
+        if (new_child == 0){
 
-            pid_t new_child = fork();
+            child_stuff(msgid);
+        } else{
 
-            if (new_child == 0){
-
-                child_stuff(msgid);
-                parent_proc = 0;
-            } else{
-
-                cur_msg.type = new_child;
-                itoa(i, &cur_msg.msg);
-                if (msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd fucked up\n");
-            }
+            cur_msg.type = new_child;
+            itoa(i, &cur_msg.msg);
+            if (msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd fucked up\n");
         }
+        
     }
     cur_msg.type = SYNC;
     itoa(0, &cur_msg.msg);
