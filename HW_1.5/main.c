@@ -7,13 +7,7 @@
 #include <errno.h>
 
 #define MAXLEN 15
-
-enum Msg_types{
-
-    PROC_CREATE = 1,
-    SYNC = 2
-};
-
+#define START_PRINTING 1
 
 struct Msg_buf{
 
@@ -54,31 +48,19 @@ int itoa(int num, char* str){
     return 0;
 }
 
-void child_stuff(int msgid){
+void child_stuff(int msg_data, int msg_sync){
 
     struct Msg_buf cur_msg;
 
-    msgrcv(msgid, (void*) &cur_msg, MAXLEN, getpid(), 0);
-
+    msgrcv(msg_data, (void*) &cur_msg, MAXLEN, getpid(), 0);
     int number_of_cur_proc = atoi(cur_msg.msg);
-    int number_has_printed = 0;
     
-    while (number_has_printed == 0){
-        
-        msgrcv(msgid, (void*) &cur_msg, MAXLEN, SYNC, 0);
-        
-        if (atoi(cur_msg.msg) == number_of_cur_proc){
+    msgrcv(msg_sync, (void*) &cur_msg, MAXLEN, number_of_cur_proc, 0);
+    printf("[%i]: %i\n", getpid(), number_of_cur_proc);
 
-            number_has_printed = 1;
-            printf("[%i]: %i\n", getpid(), number_of_cur_proc);
-
-            itoa(number_of_cur_proc + 1, &cur_msg.msg);
-            msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0);
-        } else{
-
-            msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0);
-        }
-    }
+    cur_msg.type = number_of_cur_proc + 1;
+    msgsnd(msg_sync, (const void*) &cur_msg, MAXLEN, 0);
+    
     exit(0);
 }
 
@@ -90,42 +72,34 @@ void create_proc(char* str){
     if (n <= 0) exit(-1); 
 
     struct Msg_buf cur_msg;
-    int msgid, number_has_printed = 0;
-    key_t key = ftok("./key_file.txt", 10);
-    msgid = msgget(key, IPC_CREAT | 0666);
+    int msg_data, msg_sync;
+    key_t key_data = ftok("./key_file.txt", 10), key_sync = ftok("./key_file.txt", 11);
+
+    msg_data = msgget(key_data, IPC_CREAT | 0666);
+    msg_sync = msgget(key_sync, IPC_CREAT | 0666);
     
-    for (int i = 0; i < n; i++){
-        //sleep(1);
+    for (int i = 1; i <= n; i++){
+        
         pid_t new_child = fork();
 
         if (new_child == 0){
 
-            child_stuff(msgid);
+            child_stuff(msg_data, msg_sync);
         } else{
 
             cur_msg.type = new_child;
-            itoa(i, &cur_msg.msg);
-            if (msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd problem\n");
+            itoa(i, (char*) &cur_msg.msg);
+            if (msgsnd(msg_data, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd problem\n");
         }
         
     }
-    cur_msg.type = SYNC;
-    itoa(0, &cur_msg.msg);
-    msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0);
-
-    while (number_has_printed == 0){
+    cur_msg.type = START_PRINTING;
+    msgsnd(msg_sync, (const void*) &cur_msg, MAXLEN, 0);
         
-        msgrcv(msgid, (void*) &cur_msg, MAXLEN, SYNC, 0);
-
-        if (atoi(cur_msg.msg) == n){
-
-            number_has_printed = 1;
-            printf("---------\n");
-        } else{
-
-            msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0);
-        }
-    }
+    msgrcv(msg_sync, (void*) &cur_msg, MAXLEN, n + 1, 0);
+    printf("---------\n");
+    msgctl(msg_data, IPC_RMID, NULL);
+    msgctl(msg_sync, IPC_RMID, NULL);
 }
 
 
