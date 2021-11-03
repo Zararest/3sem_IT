@@ -95,7 +95,7 @@ void create_proc(char* str){
     msgid = msgget(key, IPC_CREAT | 0666);
     
     for (int i = 0; i < n; i++){
-        sleep(1);
+        //sleep(1);
         pid_t new_child = fork();
 
         if (new_child == 0){
