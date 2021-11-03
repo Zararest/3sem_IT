@@ -105,7 +105,7 @@ void create_proc(char* str){
 
             cur_msg.type = new_child;
             itoa(i, &cur_msg.msg);
-            if (msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd fucked up\n");
+            if (msgsnd(msgid, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd problem\n");
         }
         
     }
