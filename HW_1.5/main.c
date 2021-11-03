@@ -58,7 +58,7 @@ void child_stuff(int msgid){
 
     struct Msg_buf cur_msg;
 
-    msgrcv(msgid, (void*) &cur_msg, MAXLEN, getpid(), 0);//тут останавливаются все кроме одного
+    msgrcv(msgid, (void*) &cur_msg, MAXLEN, getpid(), 0);
 
     int number_of_cur_proc = atoi(cur_msg.msg);
     int number_has_printed = 0;
