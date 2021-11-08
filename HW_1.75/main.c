@@ -1,15 +1,18 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
+#include <sys/shm.h>
 #include <sys/sem.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <string.h>
 
+#define MEMORY_KEY 42
+#define SEMAPHORES_KEY 42
 #define SIZE_OF_BUF 99
 #define NUM_OF_SEMS 6
-#define KEY 10
 
 enum Semaphore{
 
@@ -19,6 +22,12 @@ enum Semaphore{
     prod_id = 3,
     cons_id = 4,
     mutex_cons = 5
+};
+
+struct Buf_data{
+
+    int data_size;
+    char data[SIZE_OF_BUF];
 };
 
 struct sembuf init_op(int num, int op, int flag){
@@ -33,11 +42,19 @@ struct sembuf init_op(int num, int op, int flag){
 
 int create_semaphores(){
 
-    int sem_id = semget(KEY, NUM_OF_SEMS, IPC_CREAT | IPC_EXCL | 0777);
+    int sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | IPC_EXCL | 0777);
 
     if (sem_id == -1){
 
-        return semget(KEY, NUM_OF_SEMS, IPC_CREAT | 0777);
+        sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | 0777);
+
+        if (sem_id == -1){
+
+            printf("Can't open semaphores error[%i]\n", errno);
+            exit(0);
+        }
+
+        return sem_id; 
     } else{
 
         struct sembuf sems_arr[NUM_OF_SEMS];
@@ -55,54 +72,80 @@ int create_semaphores(){
             printf("Init problem = %i\n", errno);
             exit(0);
         }
+        
+        return sem_id;
     }
-
-    return sem_id;
 }
 
-void write_to_shm(int fd, char* data_from_file, int readed_info_size){
+int create_shared_m(){
 
+    int shm_id = shmget(MEMORY_KEY, sizeof(struct Buf_data), IPC_CREAT | 0777);
+
+    if (shm_id == -1){
+
+        printf("Can't create shared memory error[%i]\n", errno);
+        exit(0);
+    }
+    return shm_id;
 }
 
-int read_from_shm(char* buffer){
+void write_to_shm(int shm_id, struct Buf_data* data_from_file){
 
+    void* shm_ptr = shmat (shm_id, 0, 0);
 
+    if (shm_ptr == NULL){
+
+        printf("Can't access shared memory in write error[%i]\n", errno);
+        exit(0);
+    }
+    memcpy(shm_ptr, data_from_file, sizeof(struct Buf_data));
+
+    shmdt(shm_ptr);
+}
+
+int read_from_shm(int shm_id, struct Buf_data* buf){
+
+    void* shm_ptr = shmat (shm_id, 0, 0);
+
+    if (shm_ptr == NULL){
+
+        printf("Can't access shared memory in read error[%i]\n", errno);
+        exit(0);
+    }
+    memcpy(buf, shm_ptr, sizeof(struct Buf_data));
+
+    shmdt(shm_ptr);
 }
 
 
 void producer(int fd){
 
-    //семафор UNDO  для входа 
-
-        //семафор со значением процесса с UNDO (аналогичный для read)
-        //пока файл полность не прочитали исполняем 
-            //empty семафор с UNDO
-            //заполняем память (передаем по одному блоку)
-            //full семафор с UNDO
-        //закончили запись
-    //семафор на то что другой процесс закончил вывод(вроде можно empty использовать)
-    //сменяем семафор для входа   
-    char data_from_file[SIZE_OF_BUF];
-    int my_consumer_id = 0, readed_data_size = 0;
+    struct Buf_data data_from_file;
+    int my_consumer_id = 0;
     int sem_id = create_semaphores();
+    int shm_id = create_shared_m();
     struct sembuf sem_op;
 
     sem_op = init_op(mutex_prod, -1, SEM_UNDO); //тут встают процессы кроме одного
     semop(sem_id, &sem_op, 1);
+    for (int i = 0; i <= mutex_cons; i++){
+
+        printf("sem[%i] = %i\n", i, semctl(sem_id, i, GETVAL, NULL));
+    }
 //-----------
-    sem_op = init_op(prod_id, pid(), SEM_UNDO);    
+    sem_op = init_op(prod_id, getpid(), SEM_UNDO);    
     semop(sem_id, &sem_op, 1);
 
     while ((my_consumer_id = semctl(sem_id, cons_id, GETVAL, NULL)) == 0){}
-
-    while ((readed_data_size = read(fd, data_from_file, SIZE_OF_BUF)) != 0){ //тут надо поправить случаи когда файл ровно делится на сегменты
- 
+    
+    while ((data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF)) != 0){ //тут надо поправить случаи когда файл ровно делится на сегменты
+        
         sem_op = init_op(empty, -1, SEM_UNDO);    
         semop(sem_id, &sem_op, 1);
 
         if (my_consumer_id == semctl(sem_id, cons_id, GETVAL, NULL)){
 
-            write_to_shm(fd, data_from_file, readed_data_size);
+            write_to_shm(shm_id, &data_from_file);
         } else{
             
             printf("Other consumer now\n");
@@ -115,7 +158,7 @@ void producer(int fd){
     sem_op = init_op(empty, -1, SEM_UNDO);    
     semop(sem_id, &sem_op, 1);//надо подумать
 
-    sem_op = init_op(prod_id, -pid(), SEM_UNDO);    
+    sem_op = init_op(prod_id, -getpid(), SEM_UNDO);    
     semop(sem_id, &sem_op, 1);
 
     sem_op = init_op(empty, 1, SEM_UNDO);    
@@ -128,36 +171,42 @@ void producer(int fd){
 
 void consumer(){
 
-    char data_from_shm[SIZE_OF_BUF];
-    int my_prod_id = 0, readed_data_size = SIZE_OF_BUF;
+    struct Buf_data data_from_shm;
+    data_from_shm.data_size = -1;
+    int my_prod_id = 0;
     int sem_id = create_semaphores();
+    int shm_id = create_shared_m();
     struct sembuf sem_op;
 
     sem_op = init_op(mutex_cons, -1, SEM_UNDO); //тут встают процессы кроме одного
     semop(sem_id, &sem_op, 1);
+    for (int i = 0; i <= mutex_cons; i++){
+
+        printf("sem[%i] = %i\n", i, semctl(sem_id, i, GETVAL, NULL));
+    }
 //-----------  
-    sem_op = init_op(cons_id, pid(), SEM_UNDO);    
+    sem_op = init_op(cons_id, getpid(), SEM_UNDO);    
     semop(sem_id, &sem_op, 1);
 
-    while ((my_prod_id = semctl(sem_id, cons_id, GETVAL, NULL)) == 0){}
-
-    while (readed_data_size == SIZE_OF_BUF){
-
+    while ((my_prod_id = semctl(sem_id, prod_id, GETVAL, NULL)) == 0){}
+    
+    while (data_from_shm.data_size != 0){
+        
         sem_op = init_op(full, -1, SEM_UNDO);    
         semop(sem_id, &sem_op, 1);
 
-        if (my_prod_id == semctl(sem_id, cons_id, GETVAL, NULL)){
+        if (my_prod_id == semctl(sem_id, prod_id, GETVAL, NULL)){
 
-            readed_data_size = read_from_shm(data_from_shm);
+            read_from_shm(shm_id, &data_from_shm);
         } else{
 
             printf("Other producer now\n");
             exit(0);
         }
 
-        if (my_prod_id == semctl(sem_id, cons_id, GETVAL, NULL)){
+        if (my_prod_id == semctl(sem_id, prod_id, GETVAL, NULL)){
 
-            write(stdout, data_from_shm, readed_data_size);
+            write(STDOUT_FILENO, data_from_shm.data, data_from_shm.data_size);
         } else{
 
             printf("Other producer now\n");
@@ -167,7 +216,7 @@ void consumer(){
         sem_op = init_op(empty, 1, SEM_UNDO);    
         semop(sem_id, &sem_op, 1);
     }
-    sem_op = init_op(cons_id, -pid(), SEM_UNDO);    
+    sem_op = init_op(cons_id, -getpid(), SEM_UNDO);    
     semop(sem_id, &sem_op, 1);
 //-----------  
     sem_op = init_op(mutex_cons, 1, SEM_UNDO); 
@@ -196,4 +245,5 @@ int main(int argc, char* argv[]){//ipcs - посмотреть очередь с
 
         producer(open_file(argv[1]));
     }
+
 }
