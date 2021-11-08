@@ -8,9 +8,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <assert.h>
 
 #define MEMORY_KEY 42
-#define SEMAPHORES_KEY 42
+#define SEMAPHORES_KEY 44
 #define SIZE_OF_BUF 99
 #define NUM_OF_SEMS 6
 
@@ -30,13 +31,13 @@ struct Buf_data{
     char data[SIZE_OF_BUF];
 };
 
-struct sembuf init_op(int num, int op, int flag){
+struct sembuf init_op(unsigned short num, short op, short flag){
 
     struct sembuf tmp;
     tmp.sem_num = num;
-    tmp.sem_op = op;
+    tmp.sem_op =  op;
     tmp.sem_flg = flag;
-
+    
     return tmp;
 }
 
@@ -47,7 +48,6 @@ int create_semaphores(){
     if (sem_id == -1){
 
         sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | 0777);
-
         if (sem_id == -1){
 
             printf("Can't open semaphores error[%i]\n", errno);
@@ -56,7 +56,7 @@ int create_semaphores(){
 
         return sem_id; 
     } else{
-
+        printf("INIT\n\n");
         struct sembuf sems_arr[NUM_OF_SEMS];
         sems_arr[mutex_prod] = init_op(mutex_prod, 1, 0);
         sems_arr[mutex_cons] = init_op(mutex_cons, 1, 0);
@@ -98,6 +98,7 @@ void write_to_shm(int shm_id, struct Buf_data* data_from_file){
         printf("Can't access shared memory in write error[%i]\n", errno);
         exit(0);
     }
+    printf("writed[%i]\n", data_from_file->data_size);
     memcpy(shm_ptr, data_from_file, sizeof(struct Buf_data));
 
     shmdt(shm_ptr);
@@ -112,8 +113,9 @@ int read_from_shm(int shm_id, struct Buf_data* buf){
         printf("Can't access shared memory in read error[%i]\n", errno);
         exit(0);
     }
+    
     memcpy(buf, shm_ptr, sizeof(struct Buf_data));
-
+    printf("readed[%i]\n", buf->data_size);
     shmdt(shm_ptr);
 }
 
@@ -133,13 +135,18 @@ void producer(int fd){
         printf("sem[%i] = %i\n", i, semctl(sem_id, i, GETVAL, NULL));
     }
 //-----------
-    sem_op = init_op(prod_id, getpid(), SEM_UNDO);    
+    sem_op = init_op(prod_id, getpid() % 10000, SEM_UNDO);    
+    if (sem_op.sem_op < 0){
+
+        printf("dafuq op = %hd\n", sem_op.sem_op);
+    }
     semop(sem_id, &sem_op, 1);
 
     while ((my_consumer_id = semctl(sem_id, cons_id, GETVAL, NULL)) == 0){}
     
-    while ((data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF)) != 0){ //тут надо поправить случаи когда файл ровно делится на сегменты
-        
+    data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF);
+
+    do{
         sem_op = init_op(empty, -1, SEM_UNDO);    
         semop(sem_id, &sem_op, 1);
 
@@ -154,15 +161,13 @@ void producer(int fd){
         
         sem_op = init_op(full, 1, SEM_UNDO);    
         semop(sem_id, &sem_op, 1);
-    }
-    sem_op = init_op(empty, -1, SEM_UNDO);    
-    semop(sem_id, &sem_op, 1);//надо подумать
 
-    sem_op = init_op(prod_id, -getpid(), SEM_UNDO);    
+    } while ((data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF)) != 0);
+
+    while (my_consumer_id == semctl(sem_id, cons_id, GETVAL, NULL)){}
+
+    sem_op = init_op(prod_id, -(getpid() % 10000), SEM_UNDO);    
     semop(sem_id, &sem_op, 1);
-
-    sem_op = init_op(empty, 1, SEM_UNDO);    
-    semop(sem_id, &sem_op, 1);//надо подумать
 //-----------   
     sem_op = init_op(mutex_prod, 1, SEM_UNDO);
     semop(sem_id, &sem_op, 1);
@@ -180,12 +185,8 @@ void consumer(){
 
     sem_op = init_op(mutex_cons, -1, SEM_UNDO); //тут встают процессы кроме одного
     semop(sem_id, &sem_op, 1);
-    for (int i = 0; i <= mutex_cons; i++){
-
-        printf("sem[%i] = %i\n", i, semctl(sem_id, i, GETVAL, NULL));
-    }
 //-----------  
-    sem_op = init_op(cons_id, getpid(), SEM_UNDO);    
+    sem_op = init_op(cons_id, getpid() % 10000, SEM_UNDO);    
     semop(sem_id, &sem_op, 1);
 
     while ((my_prod_id = semctl(sem_id, prod_id, GETVAL, NULL)) == 0){}
@@ -216,7 +217,7 @@ void consumer(){
         sem_op = init_op(empty, 1, SEM_UNDO);    
         semop(sem_id, &sem_op, 1);
     }
-    sem_op = init_op(cons_id, -getpid(), SEM_UNDO);    
+    sem_op = init_op(cons_id, -(getpid() % 10000), SEM_UNDO);    
     semop(sem_id, &sem_op, 1);
 //-----------  
     sem_op = init_op(mutex_cons, 1, SEM_UNDO); 
