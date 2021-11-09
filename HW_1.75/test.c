@@ -8,7 +8,7 @@
 
 #define NUM_OF_SEMS 4
 
-struct sembuf init_op(int num, int op, int flag){
+struct sembuf init_op(short num, short op, short flag){
 
     struct sembuf tmp;
     tmp.sem_num = num;
@@ -26,16 +26,20 @@ int main(){
     printf("sem id = %i\n", sem_id);
     printf("error after create = %i\n", errno);
 
-    for (int i = 0; i < NUM_OF_SEMS; i++){
+    /*for (int i = 0; i < NUM_OF_SEMS; i++){
 
         printf("sem_num[%i] = %i\n", i, semctl(sem_id, i, GETVAL, NULL));
     }
+    sems_arr = init_op(1, 1, SEM_UNDO);
+    semop(sem_id, &sems_arr, 1);
 
-    sems_arr = init_op(1, 2, SEM_UNDO);
+    sems_arr = init_op(1, -2, SEM_UNDO);
     semop(sem_id, &sems_arr, 1);
 
     for (int i = 0; i < NUM_OF_SEMS; i++){
 
         printf("after sem_num[%i] = %i\n", i, semctl(sem_id, i, GETVAL, NULL));
-    }
+    }*/
+
+    printf("delete = %i\n", semctl(42, 0, IPC_RMID, NULL));
 }
