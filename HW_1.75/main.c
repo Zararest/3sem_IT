@@ -135,7 +135,7 @@ void producer(int fd){
     
     do{
         data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF);
-        //sleep(3);
+        sleep(1);
         sem_op = init_op(empty, -1, 0);    
         semop(sem_id, &sem_op, 1);
     
@@ -167,7 +167,7 @@ void consumer(){
 
     struct Buf_data data_from_shm;
     data_from_shm.data_size = -1;
-    int my_prod_id = 0;
+    int my_prod_id = 0, op_ret = 0;
     int sem_id = create_semaphores();
     int shm_id = create_shared_m();
     struct sembuf sem_op;
@@ -188,9 +188,16 @@ void consumer(){
 
     while (data_from_shm.data_size != 0){
         sleep(1);
-        sem_op = init_op(full, -1, 0);    
-        semop(sem_id, &sem_op, 1);
-        
+        do{
+            sem_op = init_op(full, -1, O_NONBLOCK);    
+            op_ret = semop(sem_id, &sem_op, 1);
+            if (my_prod_id != semctl(sem_id, prod_id, GETVAL, NULL)){
+
+                printf("Other producer now\n");
+                exit(0);
+            }
+        } while(op_ret == -1);
+
         if (my_prod_id == semctl(sem_id, prod_id, GETVAL, NULL)){
 
             read_from_shm(shm_id, &data_from_shm);
