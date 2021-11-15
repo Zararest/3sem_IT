@@ -6,8 +6,9 @@
 #include <errno.h>
 #include <stdlib.h>
 
-#define MAXLEN 100
+#define MAX_NAME_SIZE 10
 #define SIZE_OF_SEGMENT 10
+#define CONNECT_PIPE_NAME "./fifo/connection"
 
 void put_file_to_pipe(int inp_file, int pipe_write_end){
 
@@ -50,89 +51,106 @@ void get_file_from_pipe(int pipe){
     }
 }
 
-void input_prog(int fd){
+char* generate_name(char* buf, pid_t pid){
+    int i = 0;
 
-    mkfifo("./fifo/cur_connection", 0777);
+    for (i = 0; pid != 0; i++){
 
-    int connection_pipe = open("./fifo/cur_connection", O_WRONLY);
-    if (connection_pipe == -1){
-
-        printf("Other process has deleted connection fifo\n");
-        exit(0);
+        buf[i] = '0' + (pid % 10);
+        pid = pid / 10;
     }
-
-    int delete_connection = unlink("./fifo/cur_connection");
-    if (delete_connection != 0){
-
-        printf("Other process writing to pipe\n");
-        exit(0);
-    }
+    buf[i] = '\0';
+    return buf;
 }
 
+void consumer(){
 
-void input_prog(int fd){
+    char buf[MAX_NAME_SIZE];
+    pid_t cur_pid = getpid();
+    char* unique_fifo_name = generate_name(buf, cur_pid);
 
-    mkfifo("./fifo/cur_pipe", 0777);
-    mkfifo("./fifo/cur_connection", 0777);
+    mkfifo(CONNECT_PIPE_NAME, 0777);
 
-    int connection_pipe = open("./fifo/cur_connection", O_WRONLY);
+    if (mkfifo(unique_fifo_name, 0777) == -1){
+
+        printf("Can't create unique fifo\n");
+        exit(0);
+    }
+
+    int connection_pipe = open(CONNECT_PIPE_NAME, O_WRONLY);
     if (connection_pipe == -1){
 
-        printf("Other process has deleted connection fifo\n");
+        printf("Can't open connection fifo\n");
         exit(0);
     }
 
-    int write_pipe = open("./fifo/cur_pipe", O_WRONLY);
-    if (write_pipe == -1){
+    int tmp_RW = open(unique_fifo_name, O_RDWR);
+    if (tmp_RW == -1){
 
-        printf("Other process has deleted main fifo\n");
+        printf("Unique fifo doesn't exist\n");
         exit(0);
     }
-    //начало критической секции
-    int delete_fifo = unlink("./fifo/cur_pipe");
-    int delete_connection = unlink("./fifo/cur_connection");
 
-    if (delete_connection != 0){
+    int unique_read_pipe = open(unique_fifo_name, O_RDONLY);
+    if (unique_read_pipe == -1){
 
-        close(write_pipe);
-        printf("Other process writing to pipe\n");
+        printf("Can't open unique fifo\n");
         exit(0);
     }
-    
-    write(connection_pipe, "1", 1);//тут уже один процесс
+    close(tmp_RW);
+
+    if (write(connection_pipe, &cur_pid, sizeof(pid_t)) == -1){
+
+        printf("Can't write to connection pipe\n");
+        exit(0);
+    }
     close(connection_pipe);
+
+    sleep(2);
     
-    //конец критической секции write
-    put_file_to_pipe(fd, write_pipe);
+    get_file_from_pipe(unique_read_pipe);
+    unlink(unique_fifo_name);
 }
 
-void output_prog(){
+void producer(int fd){
 
-    char byte = '!';
-    int connect_pipe = open("./fifo/cur_connection", O_RDONLY);
+    pid_t cons_id = 0;
 
-    while (connect_pipe == -1){
-        
-        connect_pipe = open("./fifo/cur_connection", O_RDONLY);
-    } 
+    mkfifo(CONNECT_PIPE_NAME, 0777);
 
-    int read_pipe = open("./fifo/cur_pipe", O_RDONLY);
-    if (read_pipe == -1){
+    int connection_pipe = open(CONNECT_PIPE_NAME, O_RDONLY);
+    if (connection_pipe == -1){
 
-        printf("Can't open main pipe\n");
+        printf("Can't open connection fifo\n");
         exit(0);
     }
-    //начало критической секции read
-    int got_byte = read(connect_pipe, &byte, 1);
-    
-    if (got_byte != 1){
 
-        printf("Other process reading from pipe\n");
+    if (read(connection_pipe, &cons_id, sizeof(pid_t)) <= 0){
+
+        printf("Can't read consumer id\n");
         exit(0);
     }
-    
-    //конец критической секции read
-    get_file_from_pipe(read_pipe);//тут уже один процесс
+    close(connection_pipe);
+
+    char buf[MAX_NAME_SIZE];
+    char* unique_fifo_name = generate_name(buf, cons_id);
+
+    int tmp_RW = open(unique_fifo_name, O_RDWR);
+    if (tmp_RW == -1){
+
+        printf("Unique fifo doesn't exist\n");
+        exit(0);
+    }
+
+    int unique_write_fifo = open(unique_fifo_name, O_WRONLY);
+    if (unique_write_fifo == -1){
+
+        printf("Can't open write end of unique fifo\n");
+        exit(0);
+    }
+    close(tmp_RW);
+
+    put_file_to_pipe(fd, unique_write_fifo);
 }
 
 int open_file(char* file){
@@ -148,13 +166,13 @@ int open_file(char* file){
     return tmp;
 }
 
-int main(int argc, char* argv[]){ //во время записи и чтения очновной фифо в режиме WR обмениваться информацией(через дополнительный канал, который открыт только в одну сторону) чтобы убедиться что есть на другом конце кто-то  
+int main(int argc, char* argv[]){
 
     if (argc == 1){
 
-        output_prog();
+        consumer();
     } else{
 
-        input_prog(open_file(argv[1]));
+        producer(open_file(argv[1]));
     }
 }

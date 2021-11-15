@@ -59,18 +59,10 @@ int create_semaphores(){
     } else{
 
         struct sembuf sems_arr[NUM_OF_SEMS];
-        sems_arr[mutex_prod] = init_op(mutex_prod, 1, 0);
-        sems_arr[mutex_cons] = init_op(mutex_cons, 1, 0);
-        sems_arr[full] = init_op(full, 0, 0);
-        sems_arr[empty] = init_op(empty, 0, 0);
-        sems_arr[prod_id] = init_op(prod_id, 0, 0);
-        sems_arr[cons_id] = init_op(cons_id, 0, 0);
 
-        semop(sem_id, sems_arr, NUM_OF_SEMS);
+        if ((semctl(sem_id, mutex_prod, SETVAL, 1) == -1) || (semctl(sem_id, mutex_cons, SETVAL, 1) == -1)){
 
-        if (errno != 0){
-
-            printf("Init problem = %i\n", errno);
+            printf("Can't init sem\n");
             exit(0);
         }
         
