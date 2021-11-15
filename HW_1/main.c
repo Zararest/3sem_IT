@@ -63,6 +63,7 @@ char* generate_name(char* buf, pid_t pid){
     return buf;
 }
 
+
 void consumer(){
 
     char buf[MAX_NAME_SIZE];
