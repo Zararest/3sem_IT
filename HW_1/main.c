@@ -36,7 +36,7 @@ void put_file_to_pipe(int inp_file, int pipe_write_end){
     }
 }
 
-void get_file_from_pipe(int pipe){
+void get_file_from_pipe(int pipe, char* unique_fifo_name){
 
     int read_ret = -1;
     char segment[SIZE_OF_SEGMENT];
@@ -46,6 +46,7 @@ void get_file_from_pipe(int pipe){
         if (read_ret == -1){
 
             printf("Problems with pipe\n");
+            unlink(unique_fifo_name);
             exit(1);
         }
         write(STDOUT_FILENO, segment, read_ret);
@@ -75,7 +76,7 @@ void consumer(){
 
     if (mkfifo(unique_fifo_name, 0777) == -1){
 
-        printf("Can't create unique fifo\n");
+        printf("Can't create unique fifo\n");   
         exit(0);
     }
 
@@ -83,6 +84,7 @@ void consumer(){
     if (connection_pipe == -1){
 
         printf("Can't open connection fifo\n");
+        unlink(unique_fifo_name);
         exit(0);
     }
 
@@ -90,6 +92,7 @@ void consumer(){
     if (tmp_RW == -1){
 
         printf("Unique fifo doesn't exist\n");
+        unlink(unique_fifo_name);
         exit(0);
     }
 
@@ -97,6 +100,7 @@ void consumer(){
     if (unique_read_pipe == -1){
 
         printf("Can't open unique fifo\n");
+        unlink(unique_fifo_name);
         exit(0);
     }
     close(tmp_RW);
@@ -104,13 +108,14 @@ void consumer(){
     if (write(connection_pipe, &cur_pid, sizeof(pid_t)) == -1){
 
         printf("Can't write to connection pipe\n");
+        unlink(unique_fifo_name);
         exit(0);
     }
-    close(connection_pipe);
+    close(connection_pipe);//гонка за последовательность доступа
 
-    sleep(2);
+    sleep(2); //ресурс - очередность обращения к фифо. соревнуются потребитель и создатель
     
-    get_file_from_pipe(unique_read_pipe);
+    get_file_from_pipe(unique_read_pipe, unique_fifo_name);
     unlink(unique_fifo_name);
 }
 

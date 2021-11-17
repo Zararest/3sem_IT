@@ -229,7 +229,7 @@ int open_file(char* file){
     return tmp;
 }
 
-int main(int argc, char* argv[]){//ipcs - посмотреть очередь сообщений, семафоры и память 
+int main(int argc, char* argv[]){
 
     if (argc == 1){
 
