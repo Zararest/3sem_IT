@@ -58,8 +58,6 @@ int create_semaphores(){
         return sem_id; 
     } else{
 
-        struct sembuf sems_arr[NUM_OF_SEMS];
-
         if ((semctl(sem_id, mutex_prod, SETVAL, 1) == -1) || (semctl(sem_id, mutex_cons, SETVAL, 1) == -1)){
 
             printf("Can't init sem\n");
