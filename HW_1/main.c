@@ -11,66 +11,27 @@
 #define CONNECT_PIPE_NAME "./fifo/connection"
 
 
-void put_file_to_pipe(int inp_file, int pipe_write_end){
-
-    int end_of_file = 0, size_of_cur_segment = 0;
-    char segment[SIZE_OF_SEGMENT];
-
-    while (end_of_file == 0){
-        
-        size_of_cur_segment = read(inp_file, segment, SIZE_OF_SEGMENT);
-        
-        if (size_of_cur_segment != -1){
-            
-            write(pipe_write_end, segment, size_of_cur_segment);
-        } else{
-
-            printf("Read error\n");
-            exit(1);
-        }
-       
-        if (size_of_cur_segment != SIZE_OF_SEGMENT){
-
-            end_of_file = 1;
-        }
-    }
-}
-
-void get_file_from_pipe(int pipe, char* unique_fifo_name){
+void copy_to_stream(int from, int to){
 
     int read_ret = -1;
     char segment[SIZE_OF_SEGMENT];
 
-    while ((read_ret = read(pipe, segment, SIZE_OF_SEGMENT)) != 0){
+    while ((read_ret = read(from, segment, SIZE_OF_SEGMENT)) != 0){
         
         if (read_ret == -1){
 
             printf("Problems with pipe\n");
-            unlink(unique_fifo_name);
-            exit(1);
+            exit(0);
         }
-        write(STDOUT_FILENO, segment, read_ret);
+        write(to, segment, read_ret);
     }
 }
-
-char* generate_name(char* buf, pid_t pid){
-    int i = 0;
-
-    for (i = 0; pid != 0; i++){
-
-        buf[i] = '0' + (pid % 10);
-        pid = pid / 10;
-    }
-    buf[i] = '\0';
-    return buf;
-}
-
 
 void consumer(){
 
-    char buf[MAX_NAME_SIZE];
+    char unique_fifo_name[MAX_NAME_SIZE];
     pid_t cur_pid = getpid();
-    char* unique_fifo_name = generate_name(buf, cur_pid);
+    sprintf(unique_fifo_name, "%i", cur_pid);
 
     mkfifo(CONNECT_PIPE_NAME, 0777);
 
@@ -105,17 +66,17 @@ void consumer(){
     }
     close(tmp_RW);
 
-    if (write(connection_pipe, &cur_pid, sizeof(pid_t)) == -1){
+    if (write(connection_pipe, &cur_pid, sizeof(pid_t)) == -1){//------
 
         printf("Can't write to connection pipe\n");
         unlink(unique_fifo_name);
         exit(0);
     }
-    close(connection_pipe);//гонка за последовательность доступа
+    close(connection_pipe);
 
-    sleep(2); //ресурс - очередность обращения к фифо. соревнуются потребитель и создатель
+    sleep(2); 
     
-    get_file_from_pipe(unique_read_pipe, unique_fifo_name);
+    copy_to_stream(unique_read_pipe, STDOUT_FILENO);//до первой записи
     unlink(unique_fifo_name);
 }
 
@@ -132,17 +93,17 @@ void producer(int fd){
         exit(0);
     }
 
-    if (read(connection_pipe, &cons_id, sizeof(pid_t)) <= 0){
+    if (read(connection_pipe, &cons_id, sizeof(pid_t)) <= 0){//до открытия
 
         printf("Can't read consumer id\n");
         exit(0);
     }
     close(connection_pipe);
 
-    char buf[MAX_NAME_SIZE];
-    char* unique_fifo_name = generate_name(buf, cons_id);
+    char unique_fifo_name[MAX_NAME_SIZE];
+    sprintf(unique_fifo_name, "%i", cons_id);
 
-    int tmp_RW = open(unique_fifo_name, O_RDWR);
+    int tmp_RW = open(unique_fifo_name, O_RDWR);//---------
     if (tmp_RW == -1){
 
         printf("Unique fifo doesn't exist\n");
@@ -157,7 +118,7 @@ void producer(int fd){
     }
     close(tmp_RW);
 
-    put_file_to_pipe(fd, unique_write_fifo);
+    copy_to_stream(fd, unique_write_fifo);
 }
 
 int open_file(char* file){

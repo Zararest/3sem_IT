@@ -13,17 +13,18 @@
 #define MEMORY_KEY 42
 #define SEMAPHORES_KEY 44
 #define SIZE_OF_BUF 10
-#define NUM_OF_SEMS 6
+#define NUM_OF_SEMS 7
 
-//не откатывается full
-enum Semaphore{ //для каждого процесса свое значение отката
+
+enum Semaphore{
 
     mutex_prod = 0,
     full = 1,
     empty = 2,
     prod_id = 3,
     cons_id = 4,
-    mutex_cons = 5
+    mutex_cons = 5,
+    has_been_inited = 6
 };
 
 struct Buf_data{
@@ -44,28 +45,17 @@ struct sembuf init_op(unsigned short num, short op, short flag){
 
 int create_semaphores(){
 
-    int sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | IPC_EXCL | 0777);
+    int sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | 0777);
 
-    if (sem_id == -1){
+    struct sembuf sem_op[4];
+    sem_op[0] = init_op(has_been_inited, 0, IPC_NOWAIT);
+    sem_op[1] = init_op(has_been_inited, 1, 0);
+    sem_op[2] = init_op(mutex_prod, 1, 0);
+    sem_op[3] = init_op(mutex_cons, 1, 0);
 
-        sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | 0777);
-        if (sem_id == -1){
+    semop(sem_id, sem_op, 4);
 
-            printf("Can't open semaphores error[%i]\n", errno);
-            exit(0);
-        }
-
-        return sem_id; 
-    } else{
-
-        if ((semctl(sem_id, mutex_prod, SETVAL, 1) == -1) || (semctl(sem_id, mutex_cons, SETVAL, 1) == -1)){
-
-            printf("Can't init sem\n");
-            exit(0);
-        }
-        
-        return sem_id;
-    }
+    return sem_id;
 }
 
 int create_shared_m(){
@@ -228,8 +218,8 @@ int open_file(char* file){
 
     return tmp;
 }
-
-int main(int argc, char* argv[]){
+                                 //ipcs
+int main(int argc, char* argv[]){//ipcrm sem <IPC идентификатор>
 
     if (argc == 1){
 
@@ -238,5 +228,4 @@ int main(int argc, char* argv[]){
 
         producer(open_file(argv[1]));
     }
-
 }
