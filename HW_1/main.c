@@ -10,6 +10,7 @@
 #define SIZE_OF_SEGMENT 10
 #define CONNECT_PIPE_NAME "./fifo/connection"
 
+
 void put_file_to_pipe(int inp_file, int pipe_write_end){
 
     int end_of_file = 0, size_of_cur_segment = 0;
