@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
 
 #define MAXLEN 15
 #define START_PRINTING 1
@@ -51,12 +52,16 @@ int itoa(int num, char* str){
 void child_stuff(int msg_data, int msg_sync){
 
     struct Msg_buf cur_msg;
+    char str_out[MAXLEN];
 
     msgrcv(msg_data, (void*) &cur_msg, MAXLEN, getpid(), 0);
     int number_of_cur_proc = atoi(cur_msg.msg);
     
     msgrcv(msg_sync, (void*) &cur_msg, MAXLEN, number_of_cur_proc, 0);
-    printf("[%i]: %i\n", getpid(), number_of_cur_proc);
+    printf("%i ", number_of_cur_proc);
+    //fflush (stdout);
+    sprintf(str_out, "%i ", number_of_cur_proc);   //критическая секция 
+    write(STDOUT_FILENO, str_out, strlen(str_out));//гонка за место в буфере ядра на вывод
 
     cur_msg.type = number_of_cur_proc + 1;
     msgsnd(msg_sync, (const void*) &cur_msg, MAXLEN, 0);
@@ -73,11 +78,17 @@ void create_proc(char* str){
 
     struct Msg_buf cur_msg;
     int msg_data, msg_sync;
-    key_t key_data = ftok("./key_file.txt", 10), key_sync = ftok("./key_file.txt", 11);
+    //key_t key_data = ftok("./key_file.txt", 10), key_sync = ftok("./key_file.txt", 11);
 
-    msg_data = msgget(key_data, IPC_CREAT | 0666);
-    msg_sync = msgget(key_sync, IPC_CREAT | 0666);
+    msg_data = msgget(IPC_PRIVATE, IPC_CREAT | 0666);
+    msg_sync = msgget(IPC_PRIVATE, IPC_CREAT | 0666);
     
+    if ((msg_data == -1) || (msg_sync == -1)){
+
+        printf("Can't create msg\n");
+        exit(0);
+    }
+
     for (int i = 1; i <= n; i++){
         
         pid_t new_child = fork();
@@ -88,7 +99,7 @@ void create_proc(char* str){
         } else{
 
             cur_msg.type = new_child;
-            itoa(i, (char*) &cur_msg.msg);
+            itoa(i, (char*) &cur_msg.msg); //заменить на sprintf
             if (msgsnd(msg_data, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd problem\n");
         }
         
@@ -97,7 +108,7 @@ void create_proc(char* str){
     msgsnd(msg_sync, (const void*) &cur_msg, MAXLEN, 0);
         
     msgrcv(msg_sync, (void*) &cur_msg, MAXLEN, n + 1, 0);
-    printf("---------\n");
+    printf("\n---------\n");
     msgctl(msg_data, IPC_RMID, NULL);
     msgctl(msg_sync, IPC_RMID, NULL);
 }
