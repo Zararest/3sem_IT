@@ -32,23 +32,6 @@ int len(int num){
     return counter;
 }
 
-int itoa(int num, char* str){
-
-    if (str == NULL) return -1;
-
-    char number = 0;
-    int num_len = len(num);
-
-    for (int i = 1; i <= num_len; i++){
-
-        number = num % 10;
-        num = num / 10;
-        str[num_len - i] = '0' + number;
-    }
-    str[num_len] = '\0';
-    return 0;
-}
-
 void child_stuff(int msg_data, int msg_sync){
 
     struct Msg_buf cur_msg;
@@ -58,7 +41,7 @@ void child_stuff(int msg_data, int msg_sync){
     int number_of_cur_proc = atoi(cur_msg.msg);
     
     msgrcv(msg_sync, (void*) &cur_msg, MAXLEN, number_of_cur_proc, 0);
-    printf("%i ", number_of_cur_proc);
+    //printf("%i ", number_of_cur_proc);
     //fflush (stdout);
     sprintf(str_out, "%i ", number_of_cur_proc);   //критическая секция 
     write(STDOUT_FILENO, str_out, strlen(str_out));//гонка за место в буфере ядра на вывод
@@ -99,7 +82,8 @@ void create_proc(char* str){
         } else{
 
             cur_msg.type = new_child;
-            itoa(i, (char*) &cur_msg.msg); //заменить на sprintf
+            sprintf(cur_msg.msg, "%d", i);
+            //itoa(i, (char*) &cur_msg.msg); //заменить на sprintf
             if (msgsnd(msg_data, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd problem\n");
         }
         

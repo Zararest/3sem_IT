@@ -12,8 +12,15 @@
 #define PARENT_DEATH_SIG 1
 
 unsigned char cur_outp_byte = 0, cur_file_byte = 0;
-unsigned char cur_bit_mask = 0;
-int counter = 0;
+unsigned char cur_bit_mask = 1;
+int counter = 1;
+
+#define CHECK(result)                                   \
+    do {                                                \
+        if (result < 0) {                               \
+            printf ("Error in line: %d\n", __LINE__);   \
+        }                                               \
+    } while (0) 
 
 void parent_death(int sig_id){
 
@@ -29,10 +36,15 @@ void child_death(int sig_id){
 
 void got_zero(int sig_id){
 
+    cur_bit_mask = cur_bit_mask << 1;
+    counter++;
 }
 
 void got_one(int sig_id){
 
+    cur_outp_byte = cur_outp_byte | cur_bit_mask;
+    cur_bit_mask = cur_bit_mask << 1;
+    counter++;
 }
 
 void got_back(int sig_id){
@@ -40,7 +52,7 @@ void got_back(int sig_id){
 }
 
 void parent(pid_t child_id){
-
+    
     struct sigaction act;
     memset(&act, 0, sizeof(struct sigaction));
 
@@ -63,14 +75,15 @@ void parent(pid_t child_id){
     while (1){
 
         sigsuspend(&set);
+        
+        if (counter > 8){
 
-        if (counter >= 8){
-
-            printf("%c", cur_outp_byte);
-            counter = 0;
+            write(STDOUT_FILENO, &cur_outp_byte, 1);
             cur_outp_byte = 0;
-            cur_bit_mask = 0;
+            cur_bit_mask = 1;
+            counter = 1;
         }
+        
         kill(child_id, SIGUSR1);
     }
 }
@@ -87,6 +100,9 @@ void child(int fd, int real_parent_id){
     prctl(PR_SET_PDEATHSIG, PARENT_DEATH_SIG);
     sigaction(PARENT_DEATH_SIG, &act, NULL);
 
+    act.sa_handler = got_back;
+    sigaction(SIGUSR1, &act, NULL);
+
     sigaddset(&set, SIGCHLD);
     sigprocmask(SIG_UNBLOCK, &set, NULL);
     sigemptyset(&set);
@@ -99,19 +115,21 @@ void child(int fd, int real_parent_id){
 
     int parent_id = getppid();
 
-    while (read(fd, &cur_file_byte, 1) != 0){
+    while (read(fd, &cur_file_byte, 1) > 0){
 
         cur_bit_mask = 1;
         for (int i = 0; i < 8; i++){
 
-            if (cur_bit_mask & cur_file_byte == 0){
-
-                kill(parent_id, SIGUSR1);
+            if ((cur_bit_mask & cur_file_byte) == 0){
+                
+                CHECK(kill(parent_id, SIGUSR1));
             } else{
 
-                kill(parent_id, SIGUSR2);
+                CHECK(kill(parent_id, SIGUSR2));
             }
+            
             cur_bit_mask = cur_bit_mask << 1;
+            
             sigsuspend(&set);
         }
     }
@@ -157,8 +175,10 @@ int main(int argc, char* argv[]){
     if (child_id == 0){
 
         child(open_file(argv[1]), cur_parent);
+        printf("The end of child\n");
     } else{
 
+        printf("Child id: %d Par id: %d\n", child_id, getpid());
         parent(child_id);
     }
 }

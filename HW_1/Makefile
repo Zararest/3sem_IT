@@ -4,6 +4,12 @@ main.o: main.c
 main: main.o
 	gcc -o main main.o 
 
+distinguish_fd.o: distinguish_fd.c
+	gcc -c distinguish_fd.c
+
+dist_fd: distinguish_fd.o
+	gcc -o dist_fd distinguish_fd.o
+
 test.o: test.c
 	gcc -c test.c
 
@@ -18,3 +24,4 @@ test: test.o test_2.o
 clean:
 	rm -rf *.o main
 	rm -rf *.o test test2
+	rm -rf dist_fd
