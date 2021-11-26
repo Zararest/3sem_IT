@@ -81,12 +81,12 @@ void* create_shared_m(){
 
 void write_to_shm(void* shm_ptr, struct Buf_data* data_from_file){
 
-    memcpy(shm_ptr, data_from_file, sizeof(struct Buf_data));
+    
 }
 
 int read_from_shm(void* shm_ptr, struct Buf_data* buf){
 
-    memcpy(buf, shm_ptr, sizeof(struct Buf_data));
+    
 }
 
 
@@ -120,7 +120,7 @@ void producer(int fd){
             exit(0);
         }
 
-        write_to_shm(shm_ptr, &data_from_file);
+        memcpy(shm_ptr, &data_from_file, sizeof(struct Buf_data));
         
         sem_op[0] = init_op(cons_id, -my_consumer_id, IPC_NOWAIT);
         sem_op[1] = init_op(full, 1, SEM_UNDO);  
@@ -181,7 +181,7 @@ void consumer(){
             exit(0);
         }
         
-        read_from_shm(shm_ptr, &data_from_shm);
+        memcpy(&data_from_shm, shm_ptr, sizeof(struct Buf_data));
 
         write(STDOUT_FILENO, data_from_shm.data, data_from_shm.data_size);
          

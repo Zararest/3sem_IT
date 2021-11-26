@@ -49,7 +49,7 @@ int is_the_same_stat(int fir_fd, int sec_fd){
     printf("1_inode %li 2_inod %li\n", fir_st.st_ino, sec_st.st_ino);
     printf("1_device %li 2_device %li\n", fir_st.st_dev, sec_st.st_dev);
 
-    if (fir_st.st_ino == sec_st.st_ino){
+    if ((fir_st.st_ino == sec_st.st_ino) && (fir_st.st_dev == sec_st.st_dev)){
 
         return 1;
     }
@@ -113,7 +113,11 @@ int main(){
 
     int fir_fd = open("./fifo/test", O_RDWR | O_CREAT);
     int thr = open("./fifo/test", O_RDWR);
-    printf("remove = %d\n", remove("./fifo/test"));
+ 
+    printf("is_the_same()", is_the_same(fir_fd, thr));
+ 
+    CHECK(fir_fd);
+    CHECK(remove("./fifo/test"));
 
     int sec_fd = open("./fifo/test.txt", O_RDWR | O_CREAT | 0666);
     CHECK (sec_fd);

@@ -17,34 +17,14 @@ struct Msg_buf{
     char msg[MAXLEN];
 };
 
-int len(int num){
-
-    if (num == 0) return 1;
-
-    int counter = 0;
-
-    while (num != 0){
-
-        num = num / 10;
-        counter++;
-    }
-
-    return counter;
-}
-
-void child_stuff(int msg_data, int msg_sync){
+void child_stuff(int number_of_cur_proc, int msg_sync){
 
     struct Msg_buf cur_msg;
     char str_out[MAXLEN];
-
-    msgrcv(msg_data, (void*) &cur_msg, MAXLEN, getpid(), 0);
-    int number_of_cur_proc = atoi(cur_msg.msg);
     
     msgrcv(msg_sync, (void*) &cur_msg, MAXLEN, number_of_cur_proc, 0);
-    //printf("%i ", number_of_cur_proc);
-    //fflush (stdout);
     sprintf(str_out, "%i ", number_of_cur_proc);   //критическая секция 
-    write(STDOUT_FILENO, str_out, strlen(str_out));//гонка за место в буфере ядра на вывод
+    write(STDOUT_FILENO, str_out, strlen(str_out));//гонка за место в стандартном потоке вывода
 
     cur_msg.type = number_of_cur_proc + 1;
     msgsnd(msg_sync, (const void*) &cur_msg, MAXLEN, 0);
@@ -61,10 +41,9 @@ void create_proc(char* str){
 
     struct Msg_buf cur_msg;
     int msg_data, msg_sync;
-    //key_t key_data = ftok("./key_file.txt", 10), key_sync = ftok("./key_file.txt", 11);
 
-    msg_data = msgget(IPC_PRIVATE, IPC_CREAT | 0666);
-    msg_sync = msgget(IPC_PRIVATE, IPC_CREAT | 0666);
+    msg_data = msgget(IPC_PRIVATE, 0666);
+    msg_sync = msgget(IPC_PRIVATE, 0666);
     
     if ((msg_data == -1) || (msg_sync == -1)){
 
@@ -72,22 +51,16 @@ void create_proc(char* str){
         exit(0);
     }
 
-    for (int i = 1; i <= n; i++){
+    for (int number_of_child = 1; number_of_child <= n; number_of_child++){
         
         pid_t new_child = fork();
 
         if (new_child == 0){
 
-            child_stuff(msg_data, msg_sync);
-        } else{
-
-            cur_msg.type = new_child;
-            sprintf(cur_msg.msg, "%d", i);
-            //itoa(i, (char*) &cur_msg.msg); //заменить на sprintf
-            if (msgsnd(msg_data, (const void*) &cur_msg, MAXLEN, 0) == -1) printf("snd problem\n");
-        }
-        
+            child_stuff(number_of_child, msg_sync);
+        } 
     }
+    
     cur_msg.type = START_PRINTING;
     msgsnd(msg_sync, (const void*) &cur_msg, MAXLEN, 0);
         
