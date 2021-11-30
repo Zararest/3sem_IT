@@ -33,14 +33,11 @@ struct Buf_data{
     char data[SIZE_OF_BUF];
 };
 
-struct sembuf init_op(unsigned short num, short op, short flag){
+void init_op(unsigned short num, short op, short flag, struct sembuf* sem_op){
 
-    struct sembuf tmp;
-    tmp.sem_num = num;
-    tmp.sem_op =  op;
-    tmp.sem_flg = flag;
-    
-    return tmp;
+    sem_op->sem_num = num;
+    sem_op->sem_op =  op;
+    sem_op->sem_flg = flag;
 }
 
 int create_semaphores(){
@@ -48,10 +45,10 @@ int create_semaphores(){
     int sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | 0777);
 
     struct sembuf sem_op[4];
-    sem_op[0] = init_op(has_been_inited, 0, IPC_NOWAIT);
-    sem_op[1] = init_op(has_been_inited, 1, 0);
-    sem_op[2] = init_op(mutex_prod, 1, 0);
-    sem_op[3] = init_op(mutex_cons, 1, 0);
+    init_op(has_been_inited, 0, IPC_NOWAIT, &sem_op[0]);
+    init_op(has_been_inited, 1, 0, &sem_op[1]);
+    init_op(mutex_prod, 1, 0, &sem_op[2]);
+    init_op(mutex_cons, 1, 0, &sem_op[3]);
 
     semop(sem_id, sem_op, 4);
 
@@ -79,17 +76,6 @@ void* create_shared_m(){
     return shm_ptr;
 }
 
-void write_to_shm(void* shm_ptr, struct Buf_data* data_from_file){
-
-    
-}
-
-int read_from_shm(void* shm_ptr, struct Buf_data* buf){
-
-    
-}
-
-
 void producer(int fd){
 
     struct Buf_data data_from_file;
@@ -98,21 +84,23 @@ void producer(int fd){
     void* shm_ptr = create_shared_m();
     struct sembuf sem_op[4];
 
-    sem_op[0] = init_op(mutex_prod, -1, SEM_UNDO);
+    init_op(mutex_prod, -1, SEM_UNDO, &sem_op[0]);
     semop(sem_id, sem_op, 1);
 //-----------
-    sem_op[0] = init_op(prod_id, getpid() % 10000, SEM_UNDO);    
+    init_op(prod_id, getpid() % 10000, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
-  
-    while ((my_consumer_id = semctl(sem_id, cons_id, GETVAL, NULL)) == 0){}
+
+    init_op(cons_id, -1, 0, &sem_op[0]);
+    init_op(cons_id, 1, 0, &sem_op[0]);
+    semop(sem_id, sem_op, 2);
     
     do{
         data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF);
       
-        sem_op[0] = init_op(cons_id, -my_consumer_id, IPC_NOWAIT);
-        sem_op[1] = init_op(empty, -1, 0);  
-        sem_op[2] = init_op(cons_id, 0, IPC_NOWAIT);
-        sem_op[3] = init_op(cons_id, my_consumer_id, 0);
+        init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]);
+        init_op(empty, -1, 0, &sem_op[1]);  
+        init_op(cons_id, 0, IPC_NOWAIT, &sem_op[2]);
+        init_op(cons_id, my_consumer_id, 0, &sem_op[3]);
 
         if (semop(sem_id, sem_op, 4) == -1){
 
@@ -122,10 +110,10 @@ void producer(int fd){
 
         memcpy(shm_ptr, &data_from_file, sizeof(struct Buf_data));
         
-        sem_op[0] = init_op(cons_id, -my_consumer_id, IPC_NOWAIT);
-        sem_op[1] = init_op(full, 1, SEM_UNDO);  
-        sem_op[2] = init_op(cons_id, 0, IPC_NOWAIT);
-        sem_op[3] = init_op(cons_id, my_consumer_id, 0);  
+        init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]);
+        init_op(full, 1, SEM_UNDO, &sem_op[1]);  
+        init_op(cons_id, 0, IPC_NOWAIT, &sem_op[2]);
+        init_op(cons_id, my_consumer_id, 0, &sem_op[3]);  
 
         if (semop(sem_id, sem_op, 4) == -1){
 
@@ -137,10 +125,10 @@ void producer(int fd){
 
     while (my_consumer_id == semctl(sem_id, cons_id, GETVAL, NULL)){}
 
-    sem_op[0] = init_op(prod_id, -(getpid() % 10000), SEM_UNDO);    
+    init_op(prod_id, -(getpid() % 10000), SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
 //-----------   
-    sem_op[0] = init_op(mutex_prod, 1, SEM_UNDO);
+    init_op(mutex_prod, 1, SEM_UNDO, &sem_op[0]);
     semop(sem_id, sem_op, 1);
 }
 
@@ -154,10 +142,10 @@ void consumer(){
     void* shm_ptr = create_shared_m();
     struct sembuf sem_op[4];
 
-    sem_op[0] = init_op(mutex_cons, -1, SEM_UNDO); //тут встают процессы кроме одного
+    init_op(mutex_cons, -1, SEM_UNDO, &sem_op[0]); //тут встают процессы кроме одного
     semop(sem_id, sem_op, 1);
 //-----------  
-    sem_op[0] = init_op(cons_id, getpid() % 10000, SEM_UNDO);    
+    init_op(cons_id, getpid() % 10000, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
     
     if (semctl(sem_id, empty, SETVAL, 1) == -1){
@@ -166,14 +154,16 @@ void consumer(){
         exit(0);
     }
 
-    while ((my_prod_id = semctl(sem_id, prod_id, GETVAL, NULL)) == 0){}
+    init_op(prod_id, -1, 0, &sem_op[0]);
+    init_op(prod_id, 1, 0, &sem_op[0]);
+    semop(sem_id, sem_op, 2);
 
     while (data_from_shm.data_size != 0){
-        sleep(1);
-        sem_op[0] = init_op(prod_id, -my_prod_id, IPC_NOWAIT);
-        sem_op[1] = init_op(full, -1, 0); 
-        sem_op[2] = init_op(prod_id, 0, IPC_NOWAIT);
-        sem_op[3] = init_op(prod_id, my_prod_id, 0); 
+        
+        init_op(prod_id, -my_prod_id, IPC_NOWAIT, &sem_op[0]);
+        init_op(full, -1, 0, &sem_op[1]); 
+        init_op(prod_id, 0, IPC_NOWAIT, &sem_op[2]);
+        init_op(prod_id, my_prod_id, 0, &sem_op[3]); 
 
         if (semop(sem_id, sem_op, 4) == -1){
 
@@ -185,10 +175,10 @@ void consumer(){
 
         write(STDOUT_FILENO, data_from_shm.data, data_from_shm.data_size);
          
-        sem_op[0] = init_op(prod_id, -my_prod_id, IPC_NOWAIT);
-        sem_op[1] = init_op(empty, 1, SEM_UNDO);  
-        sem_op[2] = init_op(prod_id, 0, IPC_NOWAIT);
-        sem_op[3] = init_op(prod_id, my_prod_id, 0);  
+        init_op(prod_id, -my_prod_id, IPC_NOWAIT, &sem_op[0]);
+        init_op(empty, 1, SEM_UNDO, &sem_op[1]);  
+        init_op(prod_id, 0, IPC_NOWAIT, &sem_op[2]);
+        init_op(prod_id, my_prod_id, 0, &sem_op[3]);  
 
         if (semop(sem_id, sem_op, 4) == -1){
 
@@ -196,10 +186,10 @@ void consumer(){
             exit(0);
         }
     }
-    sem_op[0] = init_op(cons_id, -(getpid() % 10000), SEM_UNDO);    
+    init_op(cons_id, -(getpid() % 10000), SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
 //-----------  
-    sem_op[0] = init_op(mutex_cons, 1, SEM_UNDO); 
+    init_op(mutex_cons, 1, SEM_UNDO, &sem_op[0]); 
     semop(sem_id, sem_op, 1);
 }
 
