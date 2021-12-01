@@ -97,7 +97,7 @@ void producer(int fd){
     do{
         data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF);
       
-        init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]);
+        init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]); // добавить проверку на 0
         init_op(empty, -1, 0, &sem_op[1]);  
         init_op(cons_id, 0, IPC_NOWAIT, &sem_op[2]);
         init_op(cons_id, my_consumer_id, 0, &sem_op[3]);
@@ -124,6 +124,17 @@ void producer(int fd){
     } while (data_from_file.data_size != 0);
 
     while (my_consumer_id == semctl(sem_id, cons_id, GETVAL, NULL)){}
+
+    init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]); //тут херня
+    init_op(cons_id, 0, 0, &sem_op[1]);
+    init_op(cons_id, my_consumer_id, 0, &sem_op[2]);
+
+    if (semop(sem_id, sem_op, 3) == -1){
+
+        printf("Other consumer now\n");
+        exit(0);
+    }
+
 
     init_op(prod_id, -(getpid() % 10000), SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);

@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PARENT_DEATH_SIG 1
+#define PARENT_DEATH_SIG 4
 
 unsigned char cur_outp_byte = 0, cur_file_byte = 0;
 unsigned char cur_bit_mask = 1;
@@ -88,7 +88,6 @@ void parent(pid_t child_id){
 
 void child(int fd, int real_parent_id){
 
-    exit(0);
     struct sigaction act = {0};
 
     sigset_t set = {0};
