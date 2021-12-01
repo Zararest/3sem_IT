@@ -103,30 +103,10 @@ int main(){
 
     char path[MAXLEN];
     char buf[MAXLEN];
-    /*int fir_fd = open("./fifo/test_fifo", O_RDWR);
-    unlink("./fifo/test_fifo");
-    mkfifo("./fifo/test_fifo", 0777);
-    int sec_fd = open("./fifo/test_fifo", O_RDWR);
-    unlink("./fifo/test_fifo");
-    mkfifo("./fifo/test_fifo", 0777);
-    int trd_fd = open("./fifo/test_fifo", O_RDWR);*/
 
     int fir_fd = open("./fifo/test", O_RDWR | O_CREAT);
-    int thr = open("./fifo/test", O_RDWR);
+    int sec_fd = open("./fifo/test", O_RDWR);
  
-    printf("is_the_same()", is_the_same(fir_fd, thr));
+    printf("is_the_same() = %i\n", is_the_same_stat(-1, sec_fd));
  
-    CHECK(fir_fd);
-    CHECK(remove("./fifo/test"));
-
-    int sec_fd = open("./fifo/test.txt", O_RDWR | O_CREAT | 0666);
-    CHECK (sec_fd);
-    CHECK (unlink("./fifo/test.txt"));
-
-    printf("%d\n", write(fir_fd, "hello", 5));
-    CHECK (lseek (fir_fd, 0, SEEK_SET));
-    CHECK (lseek (sec_fd, 0, SEEK_SET));
-    printf("len = %i\n", read(sec_fd, buf, 5));
-
-    printf("is the same = %d\n", is_the_same_stat(fir_fd, sec_fd));
 }

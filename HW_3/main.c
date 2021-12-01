@@ -53,11 +53,9 @@ void got_back(int sig_id){
 
 void parent(pid_t child_id){
     
-    struct sigaction act;
-    memset(&act, 0, sizeof(struct sigaction));
+    struct sigaction act = {0};
 
-    sigset_t set;
-    memset(&set, 0, sizeof(sigset_t));
+    sigset_t set = {0};
 
     act.sa_handler = child_death;
     sigaction(SIGCHLD, &act, NULL);
@@ -90,11 +88,10 @@ void parent(pid_t child_id){
 
 void child(int fd, int real_parent_id){
 
-    struct sigaction act;
-    memset(&act, 0, sizeof(struct sigaction));
+    exit(0);
+    struct sigaction act = {0};
 
-    sigset_t set;
-    memset(&set, 0, sizeof(sigset_t));
+    sigset_t set = {0};
 
     act.sa_handler = parent_death;
     prctl(PR_SET_PDEATHSIG, PARENT_DEATH_SIG);
@@ -159,11 +156,9 @@ int main(int argc, char* argv[]){
 
     pid_t cur_parent = getpid();
 
-    sigset_t set_of_blocked_signals;
-    memset(&set_of_blocked_signals, 0, sizeof(sigset_t));
+    sigset_t set_of_blocked_signals = {0};
     
-    struct sigaction act;
-    memset(&act, 0, sizeof(struct sigaction));
+    struct sigaction act = {0};
 
     sigaddset(&set_of_blocked_signals, SIGUSR1);
     sigaddset(&set_of_blocked_signals, SIGUSR2);
