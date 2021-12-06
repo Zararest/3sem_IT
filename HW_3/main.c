@@ -64,13 +64,13 @@ void parent(pid_t child_id){
     sigaction(SIGUSR1, &act, NULL);
 
     act.sa_handler = got_one;
-    sigaction(SIGUSR2, &act, NULL);
+    sigaction(SIGUSR2, &act, NULL);//критическая секция от fork до этой строчки. Ресурс битовая масков сигналов этого процесса
     
     sigaddset(&set, SIGCHLD);
     sigprocmask(SIG_UNBLOCK, &set, NULL);
     sigemptyset(&set);
 
-    while (1){
+    while (1){//аналогично ребенку
 
         sigsuspend(&set);
         
@@ -97,7 +97,7 @@ void child(int fd, int real_parent_id){
     sigaction(PARENT_DEATH_SIG, &act, NULL);
 
     act.sa_handler = got_back;
-    sigaction(SIGUSR1, &act, NULL);
+    sigaction(SIGUSR1, &act, NULL);//критическая секция от fork до этой строчки. Ресурс битовая масков сигналов этого процесса
 
     sigaddset(&set, SIGCHLD);
     sigprocmask(SIG_UNBLOCK, &set, NULL);
@@ -111,7 +111,7 @@ void child(int fd, int real_parent_id){
 
     int parent_id = getppid();
 
-    while (read(fd, &cur_file_byte, 1) > 0){
+    while (read(fd, &cur_file_byte, 1) > 0){//гонка между роителем и ребенком за битовые маски сигналов друг друга
 
         cur_bit_mask = 1;
         for (int i = 0; i < 8; i++){
@@ -162,9 +162,10 @@ int main(int argc, char* argv[]){
     sigaddset(&set_of_blocked_signals, SIGUSR1);
     sigaddset(&set_of_blocked_signals, SIGUSR2);
     sigaddset(&set_of_blocked_signals, SIGCHLD);
-    sigprocmask(SIG_BLOCK, &set_of_blocked_signals, NULL);
+    sigprocmask(SIG_BLOCK, &set_of_blocked_signals, NULL); //переносим sigproc mask после форк и при этом сигактион определены что будет?
 
-    pid_t child_id = fork();
+    pid_t child_id = fork(); //если переместить sigprocmask после fork, то:
+                             //ребенок отправляет сигнал. Родитель его обрабатывает до sigsuspend. Потом встает на нем тк ребенок ждет подтверждение.
 
     if (child_id == 0){
 

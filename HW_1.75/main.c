@@ -84,59 +84,61 @@ void producer(int fd){
     void* shm_ptr = create_shared_m();
     struct sembuf sem_op[4];
 
-    init_op(mutex_prod, -1, SEM_UNDO, &sem_op[0]);
+    init_op(mutex_prod, -1, SEM_UNDO, &sem_op[0]); //остаток не должен быть нулем
     semop(sem_id, sem_op, 1);
 //-----------
-    init_op(prod_id, getpid() % 10000, SEM_UNDO, &sem_op[0]);    
+    init_op(prod_id, (getpid() % 10000) + 1, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
 
     init_op(cons_id, -1, 0, &sem_op[0]);
-    init_op(cons_id, 1, 0, &sem_op[0]);
+    init_op(cons_id, 1, 0, &sem_op[1]);
     semop(sem_id, sem_op, 2);
-    
+
+    my_consumer_id = semctl(sem_id, cons_id, GETVAL);
+
+    if (my_consumer_id == 0){
+
+        printf("There is no consumer\n");
+        exit(0);
+    }
+
     do{
         data_from_file.data_size = read(fd, data_from_file.data, SIZE_OF_BUF);
       
-        init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]); // добавить проверку на 0
-        init_op(empty, -1, 0, &sem_op[1]);  
-        init_op(cons_id, 0, IPC_NOWAIT, &sem_op[2]);
-        init_op(cons_id, my_consumer_id, 0, &sem_op[3]);
+        init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]);
+        init_op(cons_id, 0, IPC_NOWAIT, &sem_op[1]);
+        init_op(cons_id, my_consumer_id, 0, &sem_op[2]);//встает тут
+        init_op(empty, -1, 0, &sem_op[3]);  
 
         if (semop(sem_id, sem_op, 4) == -1){
 
-            printf("Other consumer now\n");
+            printf("Other consumer now1\n");
             exit(0);
         }
 
         memcpy(shm_ptr, &data_from_file, sizeof(struct Buf_data));
         
         init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]);
-        init_op(full, 1, SEM_UNDO, &sem_op[1]);  
-        init_op(cons_id, 0, IPC_NOWAIT, &sem_op[2]);
-        init_op(cons_id, my_consumer_id, 0, &sem_op[3]);  
+        init_op(cons_id, 0, IPC_NOWAIT, &sem_op[1]);
+        init_op(cons_id, my_consumer_id, 0, &sem_op[2]);  
+        init_op(full, 1, 0, &sem_op[3]);   //тут undo было
 
         if (semop(sem_id, sem_op, 4) == -1){
 
-            printf("Other consumer now\n");
+            printf("Other consumer now2\n");
             exit(0);
         }
 
     } while (data_from_file.data_size != 0);
 
-    while (my_consumer_id == semctl(sem_id, cons_id, GETVAL, NULL)){}
-
-    init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]); //тут херня
-    init_op(cons_id, 0, 0, &sem_op[1]);
+    init_op(cons_id, -my_consumer_id, IPC_NOWAIT, &sem_op[0]);//другой на full -1
+    init_op(cons_id, 0, IPC_NOWAIT, &sem_op[1]);
     init_op(cons_id, my_consumer_id, 0, &sem_op[2]);
+    init_op(cons_id, 0, 0, &sem_op[3]);
 
-    if (semop(sem_id, sem_op, 3) == -1){
+    semop(sem_id, sem_op, 4);
 
-        printf("Other consumer now\n");
-        exit(0);
-    }
-
-
-    init_op(prod_id, -(getpid() % 10000), SEM_UNDO, &sem_op[0]);    
+    init_op(prod_id, -(getpid() % 10000) - 1, SEM_UNDO, &sem_op[0]); //продьюсер не вышел но семафор с его пид не назначен
     semop(sem_id, sem_op, 1);
 //-----------   
     init_op(mutex_prod, 1, SEM_UNDO, &sem_op[0]);
@@ -144,7 +146,7 @@ void producer(int fd){
 }
 
 
-void consumer(){
+void consumer(){ //консьюмер не вышел 
 
     struct Buf_data data_from_shm;
     data_from_shm.data_size = -1;
@@ -152,11 +154,12 @@ void consumer(){
     int sem_id = create_semaphores();
     void* shm_ptr = create_shared_m();
     struct sembuf sem_op[4];
-
-    init_op(mutex_cons, -1, SEM_UNDO, &sem_op[0]); //тут встают процессы кроме одного
-    semop(sem_id, sem_op, 1);
+    
+    init_op(mutex_cons, -1, SEM_UNDO, &sem_op[0]);//чтобы первым всегда заходил producer
+    init_op(mutex_prod, 0, 0, &sem_op[1]);//первым заканчивает consumer
+    semop(sem_id, sem_op, 2);
 //-----------  
-    init_op(cons_id, getpid() % 10000, SEM_UNDO, &sem_op[0]);    
+    init_op(cons_id, (getpid() % 10000) + 1, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
     
     if (semctl(sem_id, empty, SETVAL, 1) == -1){
@@ -165,39 +168,48 @@ void consumer(){
         exit(0);
     }
 
-    init_op(prod_id, -1, 0, &sem_op[0]);
-    init_op(prod_id, 1, 0, &sem_op[0]);
+    init_op(prod_id, -1, 0, &sem_op[0]);//мб тут повис
+    init_op(prod_id, 1, 0, &sem_op[1]);
     semop(sem_id, sem_op, 2);
+
+    my_prod_id = semctl(sem_id, prod_id, GETVAL);
+
+    if (my_prod_id == 0){
+
+        printf("There is no producer\n");
+        exit(0);
+    }
 
     while (data_from_shm.data_size != 0){
         
         init_op(prod_id, -my_prod_id, IPC_NOWAIT, &sem_op[0]);
-        init_op(full, -1, 0, &sem_op[1]); 
-        init_op(prod_id, 0, IPC_NOWAIT, &sem_op[2]);
-        init_op(prod_id, my_prod_id, 0, &sem_op[3]); 
+        init_op(prod_id, 0, IPC_NOWAIT, &sem_op[1]);
+        init_op(prod_id, my_prod_id, 0, &sem_op[2]); //тут встает косюмер
+        init_op(full, -1, 0, &sem_op[3]); 
 
         if (semop(sem_id, sem_op, 4) == -1){
 
-            printf("Other producer now\n");
+            printf("Other producer now1\n");
             exit(0);
         }
         
         memcpy(&data_from_shm, shm_ptr, sizeof(struct Buf_data));
 
         write(STDOUT_FILENO, data_from_shm.data, data_from_shm.data_size);
-         
+        
+        //printf("after write my_prod_id = %i sem = %i\n", my_prod_id, semctl(sem_id, prod_id, GETVAL));
         init_op(prod_id, -my_prod_id, IPC_NOWAIT, &sem_op[0]);
-        init_op(empty, 1, SEM_UNDO, &sem_op[1]);  
-        init_op(prod_id, 0, IPC_NOWAIT, &sem_op[2]);
-        init_op(prod_id, my_prod_id, 0, &sem_op[3]);  
+        init_op(prod_id, 0, IPC_NOWAIT, &sem_op[1]);
+        init_op(prod_id, my_prod_id, 0, &sem_op[2]);  
+        init_op(empty, 1, 0, &sem_op[3]);   
 
         if (semop(sem_id, sem_op, 4) == -1){
 
-            printf("Other producer now\n");
+            printf("Other producer now2\n");
             exit(0);
         }
     }
-    init_op(cons_id, -(getpid() % 10000), SEM_UNDO, &sem_op[0]);    
+    init_op(cons_id, -(getpid() % 10000) - 1, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
 //-----------  
     init_op(mutex_cons, 1, SEM_UNDO, &sem_op[0]); 

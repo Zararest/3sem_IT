@@ -10,25 +10,19 @@
 #include <string.h>
 #include <sys/stat.h>
 
+/*Флешка:
+    Пока существует открытый файловый дескриптор информация не будет удалена и свободного места не прибавится 
+*/
+
+/*Задача с фифо:
+    При открытии файла 666 воспринимается как десятичное число, а не восьмеричное число. Из-за этого права доступа интерпритируются как:
+    01232
+    Программа выведет на экран, если:
+    - существут fifo с правами доступа, разрешающими данному процессу доступ
+    - данный процесс обладает правами суперпользователя
+*/
+
 #define MAXLEN 200
-
-int is_the_same_OFD(int fir_fd, int sec_fd){
-
-    int ret = syscall(SYS_kcmp, getpid(), getpid(), KCMP_FILE, fir_fd, sec_fd);
-
-    if (ret == -1){
-
-        printf("error = %i\n", errno);
-        return -1;
-    }
-
-    if (ret == 0){
-
-        return 1;
-    }
-
-    return 0;
-}
 
 int is_the_same_stat(int fir_fd, int sec_fd){
 
@@ -57,40 +51,6 @@ int is_the_same_stat(int fir_fd, int sec_fd){
     return 0;
 }
 
-int is_the_same(int fir_fd, int sec_fd){
-
-    char path[MAXLEN];
-    char fir_name[MAXLEN], sec_name[MAXLEN];
-    int size_of_fir_name = 0, size_of_sec_name = 0;
-
-    sprintf(path,"/proc/%d/fd/%d", getpid(), fir_fd);
-
-    if ((size_of_fir_name = readlink(path, fir_name, MAXLEN)) == -1){
-
-        printf("errno 1 = %i", errno);
-        return 0;
-    }
-    fir_name[size_of_fir_name] = '\0';
-
-    sprintf(path,"/proc/%d/fd/%d", getpid(), sec_fd);
-
-    if ((size_of_sec_name = readlink(path, sec_name, MAXLEN)) == -1){
-
-        printf("errno 2 = %i", errno);
-        return 0;
-    }
-    sec_name[size_of_sec_name] = '\0';
-
-
-    printf("fir = |%s| sec = |%s|\n", fir_name, sec_name);
-    if (strcmp(fir_name, sec_name) == 0){
-
-        return 1;
-    }
-
-    return 0;
-}
-
 #define CHECK(result)                                   \
     do {                                                \
         if (result < 0) {                               \
@@ -99,14 +59,24 @@ int is_the_same(int fir_fd, int sec_fd){
         }                                               \
     } while (0)
 
+/*Случаи, когда функция вернет 0:
+    1) случился unlink(удаление ссылки) файла и создался новый файл
+    2) случился mount 
+    3) файл был переименован и создан новый с тем же именем
+    4) файл является мягкой ссылкой и его измении на другой файл  
+*/
+
 int main(){
 
     char path[MAXLEN];
     char buf[MAXLEN];
 
-    int fir_fd = open("./fifo/test", O_RDWR | O_CREAT);
-    int sec_fd = open("./fifo/test", O_RDWR);
+    int fir_fd = open("./fifo/link", O_RDWR | O_CREAT);
+    fgetc(stdin);
+    int sec_fd = open("./fifo/link", O_RDWR);
  
-    printf("is_the_same() = %i\n", is_the_same_stat(-1, sec_fd));
- 
+    CHECK(fir_fd);
+    CHECK(sec_fd);
+
+    printf("is_the_same() = %i\n", is_the_same_stat(fir_fd, sec_fd));
 }
