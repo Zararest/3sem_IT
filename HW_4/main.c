@@ -5,15 +5,44 @@
 #include <stdio.h>
 #include <sys/select.h>
 #include <math.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
 
 #define CHECK(expr)                                     \
     do {                                                \
-        if (!expr) {                                    \
-            printf ("Error in line: %d\n", __LINE__);   \
+        if (!(expr)) {                                  \
+            printf ("Error in line: %d. Errno = %i\n", __LINE__, errno);   \
             exit(0);                                    \
         }                                               \
     } while (0) 
 
+#define CLOSE_USELESS_PIPES(cur_child)                      \
+    do {                                                    \
+        for (int j = 0; j < (n - 1); j++){                  \
+                                                            \
+            if (j != cur_child){                            \
+                                                            \
+                close(arr_of_pipes[j].to_child_pipe[0]);    \
+                close(arr_of_pipes[j].from_child_pipe[1]);  \
+            }                                               \
+            close(arr_of_pipes[j].to_child_pipe[1]);        \
+            close(arr_of_pipes[j].from_child_pipe[0]);      \
+        }                                                   \
+    } while (0)
+
+#define CHECK_MAX_FD(num)   \
+    do{                     \
+        if (num > max_fd){  \
+                            \
+            max_fd = num;   \
+        }                   \
+    } while (0)
+
+#define DUMP_CONNECTION(con, num) \
+    printf("Connection[%i]: buf_sz{%i} cur_size{%i} read{%i} write{%i}\n", num, con.max_buf_size, con.cur_buf_size, con.bytes_read, con.bytes_write);
+
+#define CHILD_BUF_SIZE 256
 #define CONST_BUF_SIZE 1024
 
 struct fd_for_child{
@@ -29,37 +58,149 @@ struct connection{
     int cur_buf_size;
     int bytes_read;
     int bytes_write;
+
+    int read_fd;
+    int write_fd;
 };
 
 int calc_buf_size(int i, int n){
+    
+    int pow_val = pow(3, n - i + 4);
 
-    if (CONST_BUF_SIZE > pow(3, n - i + 4)){
+    if (CONST_BUF_SIZE > pow_val){
 
         return CONST_BUF_SIZE;
     } else{
-
-        return pow(3, n - i + 4);
+        
+        return pow_val;
     }
 }
 
 void child(int number, int read_fd, int write_fd){
 
+    char child_buf[CHILD_BUF_SIZE];
+    int read_ret = -1;
+    
+    while ((read_ret = read(read_fd, child_buf, CHILD_BUF_SIZE)) != 0){
+        
+        //printf("in child num %i readed |%s|\n", number, child_buf);
+        if (read_ret == -1){
+
+            printf("Problems with pipe\n");
+            exit(0);
+        }
+        write(write_fd, child_buf, read_ret);
+    }
+
+    close(read_fd);
+    close(write_fd);
+    printf("num of dead child %i\n", number);
+    exit(0);
 }
 
-void parent(int fd, struct fd_for_childs* arr_of_pipes, int n){
+int transfer_data(struct connection* cur_con, int read_ready, int write_ready){
 
-    struct connection* arr_of_con = (struct connection*) calloc(n, sizeof(struct connection)); 
+    int ret_val = 0;
 
-    for (int i = 0; i < n; i++){
+    if (cur_con->cur_buf_size != 0){
+
+        if (write_ready != 0){
+            
+            ret_val = write(cur_con->write_fd, cur_con->buf, cur_con->cur_buf_size);
+            CHECK(ret_val > 0);
+            cur_con->cur_buf_size -= ret_val;
+            cur_con->bytes_write += ret_val;
+        }
+    } else{
+
+        if (read_ready != 0){
+
+            ret_val = read(cur_con->read_fd, cur_con->buf, cur_con->max_buf_size);
+            CHECK(ret_val >= 0);
+            cur_con->cur_buf_size += ret_val;
+            cur_con->bytes_read += ret_val;
+
+            if (ret_val == 0){
+
+                close(cur_con->read_fd);
+                
+                return 1;
+            }
+
+            if (write_ready != 0){
+        
+                ret_val = write(cur_con->write_fd, cur_con->buf, cur_con->cur_buf_size);
+                CHECK(ret_val >= 0);
+                cur_con->cur_buf_size -= ret_val;
+                cur_con->bytes_write += ret_val;
+            }
+        }
+    } 
+    return 0;
+}
+
+void parent(int fd, struct fd_for_child* arr_of_pipes, int n){
+
+    struct connection* arr_of_con = (struct connection*) calloc(n - 1, sizeof(struct connection)); 
+
+    fd_set read_init_set, read_cur_set, write_init_set, write_cur_set;
+    struct timeval tv = {5, 1};
+
+    int max_fd = 0, read_ready = 0, write_ready = 0, num_of_ready_readers = 0;
+
+    FD_ZERO(&read_cur_set);
+    FD_ZERO(&read_init_set);
+    FD_ZERO(&write_cur_set);
+    FD_ZERO(&write_init_set);
+
+    for (int i = 0; i < (n - 1); i++){
 
         arr_of_con[i].buf = calloc(calc_buf_size(i, n), sizeof(char));
         arr_of_con[i].max_buf_size = calc_buf_size(i, n);
+
+        arr_of_con[i].read_fd = arr_of_pipes[i].from_child_pipe[0];
+        arr_of_con[i].write_fd = arr_of_pipes[i + 1].to_child_pipe[1];  
+
+        FD_SET(arr_of_con[i].write_fd, &write_init_set);
+        FD_SET(arr_of_con[i].read_fd, &read_init_set);
+
+        CHECK_MAX_FD(arr_of_con[i].write_fd);
+        CHECK_MAX_FD(arr_of_con[i].read_fd);
     }
+    
+    read_cur_set = read_init_set;
+    write_cur_set = write_init_set;
+    
+    do{
+        //printf("select = %i\n", select(max_fd + 1, &read_cur_set, &write_cur_set, NULL, &tv));
+        num_of_ready_readers = 0;
 
+        for (int i = 0; i < (n - 1); i++){
+            
+            //DUMP_CONNECTION(arr_of_con[i], i);
+            read_ready = FD_ISSET(arr_of_con[i].read_fd, &read_cur_set);
+            write_ready = FD_ISSET(arr_of_con[i].write_fd, &write_cur_set);
 
+            //printf("%i: read = %i write = %i\n", i, read_ready, write_ready);
 
+            transfer_data(&arr_of_con[i], read_ready, write_ready);/* == 1){
 
-    for (int i = 0; i < n; i++){
+                FD_CLR(arr_of_con[i].read_fd, &read_init_set);
+                close(arr_of_con[i].read_fd);
+            }*/
+
+            if (read_ready != 0){
+
+                num_of_ready_readers++;
+            }
+        }
+
+        read_cur_set = read_init_set;
+        write_cur_set = write_init_set;
+
+    } while (num_of_ready_readers > 0);
+
+    for (int i = 0; i < (n - 1); i++){
 
         free(arr_of_con[i].buf);
     }
@@ -67,58 +208,64 @@ void parent(int fd, struct fd_for_childs* arr_of_pipes, int n){
     free(arr_of_con);
 }
 
+
 int main(int argc, char* argv[]){
 
     CHECK(argc >= 3);
 
     char* end_of_line = NULL;
     int n = strtol(argv[1], &end_of_line, 10);
-    CHECK(end_of_line == '\0');
+    CHECK(end_of_line != NULL);
+    CHECK(n >= 1);
+    printf ("n = %i\n", n);
 
     struct fd_for_child* arr_of_pipes = (struct fd_for_child*) calloc(n, sizeof(struct fd_for_child));
 
     int fd = open(argv[2], O_RDONLY);
     CHECK(fd != -1);
 
-    pid_t fir_child_id = fork();
-    pipe(arr_of_pipes[0].from_child_pipe);
+    for (int i = 1; i < (n - 1); i++){
 
-    arr_of_pipes[0].to_child_pipe[0] = -1;
-    arr_of_pipes[0].to_child_pipe[1] = -1;
-
-    if (fir_child_id == 0){
-
-        close(arr_of_pipes[0].from_child_pipe[0]);
-        child(0, fd, arr_of_pipes[0].from_child_pipe[1]);
-    } else{
-
-        close(arr_of_pipes[0].from_child_pipe[1]);
-    }
-
-    for (int i = 2; i < (n - 1); i++){
-
-        pid_t child_id = fork();
         pipe(arr_of_pipes[i].to_child_pipe);
         pipe(arr_of_pipes[i].from_child_pipe);
-        printf("buf size = %i\n", calc_buf_size(i, n));
 
-        if (child_id == 0){
-            
-            close(arr_of_pipes[i].to_child_pipe[1]);
-            close(arr_of_pipes[i].from_child_pipe[0]);
-            
-            child(i, arr_of_pipes[i].to_child_pipe[0], arr_of_pipes[i].from_child_pipe[1]);
-
-            exit(0);
-        } else{
-
-            close(arr_of_pipes[i].to_child_pipe[0]);
-            close(arr_of_pipes[i].from_child_pipe[1]);
-        }
+        fcntl(arr_of_pipes[i].to_child_pipe[1], F_SETFL, O_NONBLOCK);
+        fcntl(arr_of_pipes[i].from_child_pipe[0], F_SETFL, O_NONBLOCK);
     }
 
-    
+    pipe(arr_of_pipes[0].from_child_pipe);
+    arr_of_pipes[0].to_child_pipe[0] = fd;
+    arr_of_pipes[0].to_child_pipe[1] = -1;
 
+    if (n > 1){
+
+        pipe(arr_of_pipes[n - 1].to_child_pipe);
+    } else{
+
+        close(arr_of_pipes[n - 1].from_child_pipe[0]);
+        close(arr_of_pipes[n - 1].from_child_pipe[1]);
+    }
+
+    arr_of_pipes[n - 1].from_child_pipe[0] = -1;
+    arr_of_pipes[n - 1].from_child_pipe[1] = STDOUT_FILENO;
+
+    for (int i = 0; i < n; i++){
+        
+        pid_t child_id = fork();
+
+        if (child_id == 0){
+        
+            CLOSE_USELESS_PIPES(i);
+
+            child(i, arr_of_pipes[i].to_child_pipe[0], arr_of_pipes[i].from_child_pipe[1]);
+        } else{
+            
+            close(arr_of_pipes[i].to_child_pipe[0]);
+            if (i != (n - 1)){
+                close(arr_of_pipes[i].from_child_pipe[1]);
+            }
+        }
+    }  
     parent(fd, arr_of_pipes, n);
 
     free(arr_of_pipes);
