@@ -22,6 +22,7 @@ int counter = 1;
         }                                               \
     } while (0) 
 
+
 void parent_death(int sig_id){
 
     printf("Parent is dead\n");
@@ -53,7 +54,7 @@ void got_back(int sig_id){
 
 void parent(pid_t child_id){
     
-    struct sigaction act = {0};
+    struct sigaction act = {0}; //от форка до сигсаспенда 
 
     sigset_t set = {0};
 
@@ -64,7 +65,7 @@ void parent(pid_t child_id){
     sigaction(SIGUSR1, &act, NULL);
 
     act.sa_handler = got_one;
-    sigaction(SIGUSR2, &act, NULL);//критическая секция от fork до этой строчки. Ресурс битовая масков сигналов этого процесса
+    sigaction(SIGUSR2, &act, NULL);//критическая секция от fork до этой строчки
     
     sigaddset(&set, SIGCHLD);
     sigprocmask(SIG_UNBLOCK, &set, NULL);
@@ -72,7 +73,7 @@ void parent(pid_t child_id){
 
     while (1){//аналогично ребенку
 
-        sigsuspend(&set);
+        sigsuspend(&set); 
         
         if (counter > 8){
 
@@ -97,7 +98,7 @@ void child(int fd, int real_parent_id){
     sigaction(PARENT_DEATH_SIG, &act, NULL);
 
     act.sa_handler = got_back;
-    sigaction(SIGUSR1, &act, NULL);//критическая секция от fork до этой строчки. Ресурс битовая масков сигналов этого процесса
+    sigaction(SIGUSR1, &act, NULL);
 
     sigaddset(&set, SIGCHLD);
     sigprocmask(SIG_UNBLOCK, &set, NULL);
@@ -111,7 +112,7 @@ void child(int fd, int real_parent_id){
 
     int parent_id = getppid();
 
-    while (read(fd, &cur_file_byte, 1) > 0){//гонка между роителем и ребенком за битовые маски сигналов друг друга
+    while (read(fd, &cur_file_byte, 1) > 0){
 
         cur_bit_mask = 1;
         for (int i = 0; i < 8; i++){
