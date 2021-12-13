@@ -54,7 +54,7 @@ void got_back(int sig_id){
 
 void parent(pid_t child_id){ //
     
-    struct sigaction act = {0}; //от форка до сигсаспенда 
+    struct sigaction act = {0};
 
     sigset_t set = {0};
 
@@ -65,13 +65,13 @@ void parent(pid_t child_id){ //
     sigaction(SIGUSR1, &act, NULL);
 
     act.sa_handler = got_one;
-    sigaction(SIGUSR2, &act, NULL);//критическая секция от fork до этой строчки
+    sigaction(SIGUSR2, &act, NULL);
     
     sigaddset(&set, SIGCHLD);
     sigprocmask(SIG_UNBLOCK, &set, NULL);
     sigemptyset(&set);
 
-    while (1){//аналогично ребенку
+    while (1){
 
         sigsuspend(&set);  //конец первой //конец второй 
         
