@@ -45,7 +45,7 @@ int create_semaphores(){
     int sem_id = semget(SEMAPHORES_KEY, NUM_OF_SEMS, IPC_CREAT | 0777);
 
     struct sembuf sem_op[4];
-    init_op(has_been_inited, 0, IPC_NOWAIT, &sem_op[0]);
+    init_op(has_been_inited, 0, IPC_NOWAIT, &sem_op[0]);//борьба между всеми за значение семафоров
     init_op(has_been_inited, 1, 0, &sem_op[1]);
     init_op(mutex_prod, 1, 0, &sem_op[2]);
     init_op(mutex_cons, 1, 0, &sem_op[3]);
@@ -85,8 +85,8 @@ void producer(int fd){
     struct sembuf sem_op[4];
 
     init_op(mutex_prod, -1, SEM_UNDO, &sem_op[0]);
-    semop(sem_id, sem_op, 1);
-//----------- 
+    semop(sem_id, sem_op, 1); //борьба между producer ами за разделяемую память
+
     init_op(prod_id, (getpid() % 10000) + 1, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
 
@@ -110,7 +110,7 @@ void producer(int fd){
         init_op(cons_id, my_consumer_id, 0, &sem_op[2]);
         init_op(empty, -1, 0, &sem_op[3]);  
 
-        if (semop(sem_id, sem_op, 4) == -1){
+        if (semop(sem_id, sem_op, 4) == -1){ //борьба между produser и consumer за разделяемую память
 
             printf("Other consumer now1\n");
             exit(0);
@@ -123,7 +123,7 @@ void producer(int fd){
         init_op(cons_id, my_consumer_id, 0, &sem_op[2]);  
         init_op(full, 1, 0, &sem_op[3]); 
 
-        if (semop(sem_id, sem_op, 4) == -1){
+        if (semop(sem_id, sem_op, 4) == -1){ //конец борьбы 
             
             printf("Other consumer now2\n");
             exit(0);
@@ -140,9 +140,9 @@ void producer(int fd){
 
     init_op(prod_id, -(getpid() % 10000) - 1, SEM_UNDO, &sem_op[0]);
     semop(sem_id, sem_op, 1);
-//----------- конец гонки за ресурсы
+
     init_op(mutex_prod, 1, SEM_UNDO, &sem_op[0]);
-    semop(sem_id, sem_op, 1);
+    semop(sem_id, sem_op, 1); //конец борьбы за ресурсы между prod
 }
 
 
@@ -157,12 +157,12 @@ void consumer(){
 
     init_op(mutex_cons, -1, SEM_UNDO, &sem_op[0]);
     init_op(mutex_prod, 0, 0, &sem_op[1]);
-    semop(sem_id, sem_op, 2);
-//----------- 
+    semop(sem_id, sem_op, 2); //борьба между consumer ами за разделяемую память
+
     init_op(cons_id, (getpid() % 10000) + 1, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
     
-    if (semctl(sem_id, empty, SETVAL, 1) == -1){
+    if ((semctl(sem_id, empty, SETVAL, 1) == -1) || (semctl(sem_id, full, SETVAL, 1) == -1)){
 
         printf("Can't set empty sem\n");
         exit(0);
@@ -187,7 +187,7 @@ void consumer(){
         init_op(prod_id, my_prod_id, 0, &sem_op[2]);
         init_op(full, -1, 0, &sem_op[3]); 
 
-        if (semop(sem_id, sem_op, 4) == -1){
+        if (semop(sem_id, sem_op, 4) == -1){ //борьба между produser и consumer за разделяемую память
 
             printf("Other producer now1\n");
             exit(0);
@@ -202,7 +202,7 @@ void consumer(){
         init_op(prod_id, my_prod_id, 0, &sem_op[2]);  
         init_op(empty, 1, 0, &sem_op[3]);   
 
-        if (semop(sem_id, sem_op, 4) == -1){
+        if (semop(sem_id, sem_op, 4) == -1){ //конец борьбы
 
             printf("Other producer now2\n");
             exit(0);
@@ -210,9 +210,9 @@ void consumer(){
     }
     init_op(cons_id, -(getpid() % 10000) - 1, SEM_UNDO, &sem_op[0]);    
     semop(sem_id, sem_op, 1);
-//----------- конец крит секциии
+
     init_op(mutex_cons, 1, SEM_UNDO, &sem_op[0]); 
-    semop(sem_id, sem_op, 1);
+    semop(sem_id, sem_op, 1); //конец борьбы consumer ов
 }
 
 int open_file(char* file){

@@ -52,7 +52,7 @@ void got_back(int sig_id){
 
 }
 
-void parent(pid_t child_id){
+void parent(pid_t child_id){ //
     
     struct sigaction act = {0}; //от форка до сигсаспенда 
 
@@ -73,7 +73,7 @@ void parent(pid_t child_id){
 
     while (1){//аналогично ребенку
 
-        sigsuspend(&set); 
+        sigsuspend(&set);  //конец первой //конец второй 
         
         if (counter > 8){
 
@@ -83,7 +83,7 @@ void parent(pid_t child_id){
             counter = 1;
         }
         
-        kill(child_id, SIGUSR1);
+        kill(child_id, SIGUSR1); //начало второй
     }
 }
 
@@ -94,7 +94,7 @@ void child(int fd, int real_parent_id){
     sigset_t set = {0};
 
     act.sa_handler = parent_death;
-    prctl(PR_SET_PDEATHSIG, PARENT_DEATH_SIG);
+    prctl(PR_SET_PDEATHSIG, PARENT_DEATH_SIG);    //вроде здесь
     sigaction(PARENT_DEATH_SIG, &act, NULL);
 
     act.sa_handler = got_back;
@@ -127,11 +127,19 @@ void child(int fd, int real_parent_id){
             
             cur_bit_mask = cur_bit_mask << 1;
             
-            sigsuspend(&set);
+            sigsuspend(&set); //конец первой //начало второй //конец второй 
         }
     }
-
 }
+
+/*
+    Крит секции:
+        1) в родителе от форка до сигсаспенда гонка с ребенком. борьба за маску пришедших сигналов
+        2) в родителе гонка с ребенком от sigsuspend до sigsuspend. борьба за маску пришедших сигналов
+        3) в ребенке от kill до sigsuspend гонка с родителем за маску пришедших сигналов ребенка
+        4) в ребенке гонка от fork до prctl тк 
+*/
+
 
 int open_file(char* file){
 
