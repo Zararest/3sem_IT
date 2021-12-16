@@ -97,6 +97,7 @@ int calc_buf_size(int i, int n){
 void child(int number, int read_fd, int write_fd){
 
     char child_buf[CHILD_BUF_SIZE];
+    int writed = 0;
     int read_ret = -1;
     
     while ((read_ret = read(read_fd, child_buf, CHILD_BUF_SIZE)) != 0){
@@ -106,7 +107,8 @@ void child(int number, int read_fd, int write_fd){
             printf("Problems with pipe in child %i\n", number);
             exit(0);
         }
-        CHECK(write(write_fd, child_buf, read_ret) > 0);
+    
+        writed += write(write_fd, child_buf, read_ret);
     }
 
     close(read_fd);
@@ -129,9 +131,9 @@ int transfer_data(struct connection* cur_con, int read_ready, int write_ready, i
     if (cur_con->cur_buf_size != 0){
 
         if (write_ready != 0){
-            //DEBUG(write(STDERR_FILENO, cur_con->buf, cur_con->cur_buf_size));
-            write_ret_val = write(cur_con->write_fd, &cur_con->buf[cur_con->cur_write_pos], cur_con->cur_buf_size);
-            CHECK(write_ret_val != -1);
+            
+            write_ret_val = write(cur_con->write_fd, cur_con->buf + cur_con->cur_write_pos, cur_con->cur_buf_size);
+            CHECK(write_ret_val > 0);
             cur_con->cur_write_pos += write_ret_val;
             cur_con->cur_buf_size -= write_ret_val;
             cur_con->bytes_write += write_ret_val;
@@ -156,8 +158,8 @@ int transfer_data(struct connection* cur_con, int read_ready, int write_ready, i
         }
     } 
 
-    if (read_ret_val == 0){
-
+    if ((read_ret_val == 0) && (cur_con->cur_buf_size == 0)){
+        
         close(cur_con->read_fd);
         cur_con->read_fd_is_closed = 1;
         return READ_CLOSED;
@@ -232,7 +234,7 @@ void parent(int fd, struct fd_for_child* arr_of_pipes, int n){
 
     for (int i = 0; i < (n - 1); i++){
 
-        DEBUG(DUMP_CONNECTION(arr_of_con[i], i));
+        //DEBUG(DUMP_CONNECTION(arr_of_con[i], i));
     }
 
     for (int i = 0; i < (n - 1); i++){
