@@ -2,7 +2,7 @@ main.o: main.c
 	gcc -c main.c
 
 main: main.o
-	gcc -o main main.o 
+	gcc -o main main.o -lm
 
 test.o: test.c
 	gcc -c test.c

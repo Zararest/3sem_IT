@@ -14,12 +14,12 @@
 #define CONST_BUF_SIZE 1024
 #define DEBUG_MODE 1
 
-#define CHECK(expr)                                     \
-    do {                                                \
-        if (!(expr)) {                                  \
-            printf ("Error in line: %d. Errno = %i\n", __LINE__, errno);   \
-            exit(0);                                    \
-        }                                               \
+#define CHECK(expr)                                                                 \
+    do {                                                                            \
+        if (!(expr)) {                                                              \
+            fprintf (stderr, "Error in line: %d. Errno = %i\n", __LINE__, errno);   \
+            exit(0);                                                                \
+        }                                                                           \
     } while (0) 
 
 #define CLOSE_USELESS_PIPES(cur_child)                      \
@@ -68,9 +68,10 @@ struct fd_for_child{
 
 struct connection{
 
-    void* buf;
+    char* buf;
     int max_buf_size;
     int cur_buf_size;
+    int cur_write_pos;
     int bytes_read;
     int bytes_write;
 
@@ -128,9 +129,10 @@ int transfer_data(struct connection* cur_con, int read_ready, int write_ready, i
     if (cur_con->cur_buf_size != 0){
 
         if (write_ready != 0){
-            DEBUG(write(STDERR_FILENO, cur_con->buf, cur_con->cur_buf_size));
-            write_ret_val = write(cur_con->write_fd, cur_con->buf, cur_con->cur_buf_size);
+            //DEBUG(write(STDERR_FILENO, cur_con->buf, cur_con->cur_buf_size));
+            write_ret_val = write(cur_con->write_fd, &cur_con->buf[cur_con->cur_write_pos], cur_con->cur_buf_size);
             CHECK(write_ret_val != -1);
+            cur_con->cur_write_pos += write_ret_val;
             cur_con->cur_buf_size -= write_ret_val;
             cur_con->bytes_write += write_ret_val;
         }
@@ -140,6 +142,7 @@ int transfer_data(struct connection* cur_con, int read_ready, int write_ready, i
 
             read_ret_val = read(cur_con->read_fd, cur_con->buf, cur_con->max_buf_size);
             CHECK(read_ret_val != -1);
+            cur_con->cur_write_pos = 0;
             cur_con->cur_buf_size += read_ret_val;
             cur_con->bytes_read += read_ret_val;
 

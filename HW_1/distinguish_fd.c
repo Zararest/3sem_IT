@@ -15,6 +15,7 @@
 */
 
 /*Задача с фифо:
+
     При открытии файла 666 воспринимается как десятичное число, а не восьмеричное число. Из-за этого права доступа интерпритируются как:
     01232
     Программа выведет на экран, если:
@@ -61,9 +62,8 @@ int is_the_same_stat(int fir_fd, int sec_fd){
 
 /*Случаи, когда функция вернет 0:
     1) случился unlink(удаление ссылки) файла и создался новый файл
-    2) случился mount 
+    2) случился mount (271 страница)
     3) файл был переименован и создан новый с тем же именем
-    4) файл является мягкой ссылкой и его измении на другой файл  
 */
 
 int main(){
@@ -71,12 +71,14 @@ int main(){
     char path[MAXLEN];
     char buf[MAXLEN];
 
-    int fir_fd = open("./fifo/link", O_RDWR | O_CREAT);
+    int fir_fd = open("./test.txt", O_RDWR | O_CREAT);
     fgetc(stdin);
-    int sec_fd = open("./fifo/link", O_RDWR);
+    //int sec_fd = open("./fifo/link", O_RDWR);
  
     CHECK(fir_fd);
-    CHECK(sec_fd);
+    //CHECK(sec_fd);
 
-    printf("is_the_same() = %i\n", is_the_same_stat(fir_fd, sec_fd));
+    printf("write = %li\n", write(fir_fd, "LOL", 3));
+    printf("read = %li\n", read(fir_fd, buf, 3));
+    write(STDOUT_FILENO, buf, 3);
 }
