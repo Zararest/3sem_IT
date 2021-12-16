@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <errno.h>
 
-
+#define SELECT_WAIT 10
 #define CHILD_BUF_SIZE 256
 #define CONST_BUF_SIZE 1024
 #define DEBUG_MODE 1
@@ -53,13 +53,6 @@
     fprintf(stderr, "Connection[%i]: cur_size{%i} read{%i} write{%i} read_closed{%i}\n", num, con.cur_buf_size, con.bytes_read, con.bytes_write, con.read_fd_is_closed);
 
 
-enum Con_ret{
-
-    IN_PROGRESS = 0,
-    READ_CLOSED = 1,
-    WRITE_CLOSED = 2
-};
-
 struct fd_for_child{
 
     int to_child_pipe[2];
@@ -72,8 +65,6 @@ struct connection{
     int max_buf_size;
     int cur_buf_size;
     int cur_write_pos;
-    int bytes_read;
-    int bytes_write;
 
     int read_fd_is_closed;
 
@@ -97,18 +88,17 @@ int calc_buf_size(int i, int n){
 void child(int number, int read_fd, int write_fd){
 
     char child_buf[CHILD_BUF_SIZE];
-    int writed = 0;
     int read_ret = -1;
     
     while ((read_ret = read(read_fd, child_buf, CHILD_BUF_SIZE)) != 0){
-    
+        
         if (read_ret == -1){
 
             printf("Problems with pipe in child %i\n", number);
             exit(0);
         }
     
-        writed += write(write_fd, child_buf, read_ret);
+        write(write_fd, child_buf, read_ret);
     }
 
     close(read_fd);
@@ -122,12 +112,6 @@ int transfer_data(struct connection* cur_con, int read_ready, int write_ready, i
     DEBUG(CHECK(cur_con->cur_buf_size >= 0));
     DEBUG(CHECK(cur_con->cur_buf_size <= cur_con->max_buf_size));
     
-    if (cur_con->read_fd_is_closed && (cur_con->cur_buf_size == 0)){
-        
-        close(cur_con->write_fd);
-        return WRITE_CLOSED;
-    }
-
     if (cur_con->cur_buf_size != 0){
 
         if (write_ready != 0){
@@ -136,7 +120,6 @@ int transfer_data(struct connection* cur_con, int read_ready, int write_ready, i
             CHECK(write_ret_val > 0);
             cur_con->cur_write_pos += write_ret_val;
             cur_con->cur_buf_size -= write_ret_val;
-            cur_con->bytes_write += write_ret_val;
         }
     } else{
 
@@ -146,42 +129,37 @@ int transfer_data(struct connection* cur_con, int read_ready, int write_ready, i
             CHECK(read_ret_val != -1);
             cur_con->cur_write_pos = 0;
             cur_con->cur_buf_size += read_ret_val;
-            cur_con->bytes_read += read_ret_val;
 
             if (write_ready != 0){
         
                 write_ret_val = write(cur_con->write_fd, cur_con->buf, cur_con->cur_buf_size);
                 CHECK(write_ret_val != -1);
                 cur_con->cur_buf_size -= write_ret_val;
-                cur_con->bytes_write += write_ret_val;
             }
         }
     } 
 
-    if ((read_ret_val == 0) && (cur_con->cur_buf_size == 0)){
+    if (read_ret_val == 0){
         
         close(cur_con->read_fd);
         cur_con->read_fd_is_closed = 1;
-        return READ_CLOSED;
     }
 
-    return IN_PROGRESS;
+    return 0;
 }
 
 void parent(int fd, struct fd_for_child* arr_of_pipes, int n){
-
+    
     struct connection* arr_of_con = (struct connection*) calloc(n - 1, sizeof(struct connection)); 
 
-    fd_set read_init_set, read_cur_set, write_init_set, write_cur_set;
-    struct timeval tv = {1, 1};
+    fd_set read_set, write_set;
+    struct timeval tv = {SELECT_WAIT, 0};
 
     int max_fd = 0, read_ready = 0, write_ready = 0, transfer_ret = 0;
-    int num_of_fd = 0;
+    int num_of_closed_con = 0;
 
-    FD_ZERO(&read_cur_set);
-    FD_ZERO(&read_init_set);
-    FD_ZERO(&write_cur_set);
-    FD_ZERO(&write_init_set);
+    FD_ZERO(&read_set);
+    FD_ZERO(&write_set);
 
     for (int i = 0; i < (n - 1); i++){
 
@@ -191,50 +169,50 @@ void parent(int fd, struct fd_for_child* arr_of_pipes, int n){
         arr_of_con[i].read_fd = arr_of_pipes[i].from_child_pipe[0];
         arr_of_con[i].write_fd = arr_of_pipes[i + 1].to_child_pipe[1];  
 
-        FD_SET(arr_of_con[i].write_fd, &write_init_set);
-        num_of_fd++;
-        FD_SET(arr_of_con[i].read_fd, &read_init_set);
-        num_of_fd++;
+        FD_SET(arr_of_con[i].write_fd, &write_set);
+        FD_SET(arr_of_con[i].read_fd, &read_set);
 
         CHECK_MAX_FD(arr_of_con[i].write_fd);
         CHECK_MAX_FD(arr_of_con[i].read_fd);
     }
     
-    read_cur_set = read_init_set;
-    write_cur_set = write_init_set;
+    while (num_of_closed_con < (n - 1)){
     
-    while (select(max_fd + 1, &read_cur_set, &write_cur_set, NULL, &tv) > 0){
+        select(max_fd + 1, &read_set, &write_set, NULL, &tv);
 
-        for (int i = 0; i < (n - 1); i++){
+        for (int i = num_of_closed_con; i < (n - 1); i++){
             
-            read_ready = FD_ISSET(arr_of_con[i].read_fd, &read_cur_set);
-            write_ready = FD_ISSET(arr_of_con[i].write_fd, &write_cur_set);
+            read_ready = FD_ISSET(arr_of_con[i].read_fd, &read_set);
+            write_ready = FD_ISSET(arr_of_con[i].write_fd, &write_set);
+            
+            transfer_data(&arr_of_con[i], read_ready, write_ready, i);
+        }   
 
-            if (read_ready | write_ready){
+        FD_ZERO(&read_set);
+        FD_ZERO(&write_set);
+        tv.tv_sec = SELECT_WAIT;
 
-                transfer_ret = transfer_data(&arr_of_con[i], read_ready, write_ready, i);
+        for (int i = num_of_closed_con; i < (n -1); i++){
+
+            if ((arr_of_con[i].read_fd_is_closed != 1) && (arr_of_con[i].cur_buf_size == 0)){
+
+                FD_SET(arr_of_con[i].read_fd, &read_set);
+                CHECK_MAX_FD(arr_of_con[i].read_fd);
             }
 
-            if (transfer_ret == READ_CLOSED){
-
-                FD_CLR(arr_of_con[i].read_fd, &read_init_set);
-                num_of_fd--;
-            }
-
-            if (transfer_ret == WRITE_CLOSED){
-
-                FD_CLR(arr_of_con[i].write_fd, &write_init_set);
-                num_of_fd--;
+            if (arr_of_con[i].cur_buf_size == 0){
+                
+                if (arr_of_con[i].read_fd_is_closed == 1){ 
+                    
+                    close(arr_of_con[i].write_fd);
+                    num_of_closed_con++;
+                } 
+            } else{
+                
+                FD_SET(arr_of_con[i].write_fd, &write_set);
+                CHECK_MAX_FD(arr_of_con[i].write_fd);
             }
         }
-        
-        read_cur_set = read_init_set;
-        write_cur_set = write_init_set;
-    }
-
-    for (int i = 0; i < (n - 1); i++){
-
-        //DEBUG(DUMP_CONNECTION(arr_of_con[i], i));
     }
 
     for (int i = 0; i < (n - 1); i++){
@@ -302,6 +280,7 @@ int main(int argc, char* argv[]){
             }
         }
     }  
+
     parent(fd, arr_of_pipes, n);
 
     free(arr_of_pipes);

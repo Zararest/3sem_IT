@@ -27,15 +27,19 @@ int main(){
     fd_set set;
     struct timeval tv = {10, 0};
 
-    FD_ZERO(&set);
-    //FD_SET(10, &set);
     close(pipefd[1]);
+
+    FD_ZERO(&set);
     FD_SET(pipefd[0], &set);
+    printf("select = %i\n", select(pipefd[0] + 1, &set, NULL, NULL, &tv));
+    printf("in set %i\n", FD_ISSET(pipefd[0], &set));
+
+    FD_ZERO(&set);
+    FD_SET(pipefd[0], &set);
+    tv.tv_sec = 5;
+
     printf("select = %i\n", select(11, &set, NULL, NULL, &tv));
-
-    printf("in set %i\n", FD_ISSET(pipefd[1], &set));
-
-    printf("write %li\n", write(pipefd[1], "lol", 3));
+    printf("in set %i\n", FD_ISSET(pipefd[0], &set));
     /*
     pid_t child_id = fork();
 
